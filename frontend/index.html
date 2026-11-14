@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ParentBridge</title>
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; height: 100vh; font: 22px/1.4 system-ui, sans-serif; background: #eef0f3; color: #1a1a1a; }
+
+  /* Meeting: two halves, French left, English right */
+  #meeting { height: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
+  .half { display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #fff; border-radius: 24px; min-height: 0; transition: box-shadow .2s; }
+  .half.speaking { box-shadow: 0 0 0 4px #7c5cff, 0 0 48px 8px #7c5cff88; } /* later: animated Siri-style glow */
+  .half h2 { margin: 0; font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: #888; }
+  .en h2 { text-align: right; }
+  .captions { flex: 1; overflow-y: auto; }
+  .captions p { margin: 0 0 16px; }
+  .captions .own { font-weight: 600; }
+  .captions .other { color: #555; }
+  .status { min-height: 1.4em; font-size: 18px; color: #888; text-align: center; }
+  .status.error { color: #c0392b; }
+  .mic { align-self: center; width: 128px; height: 128px; border-radius: 50%; border: 0; background: #1a1a1a; color: #fff; font-size: 52px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .mic:disabled { opacity: .35; cursor: default; }
+  #end { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border: 0; border-radius: 999px; background: #c0392b; color: #fff; font-size: 18px; cursor: pointer; }
+  #end:disabled { opacity: .5; }
+
+  /* ?flat=1 — tablet lies flat, each half faces the person at its end. Tune on the real device. */
+  .flat .fr { writing-mode: vertical-rl; }
+  .flat .en { writing-mode: vertical-rl; transform: rotate(180deg); }
+
+  /* Summary */
+  #summary { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  #summary .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  #summary h2 { font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: #888; }
+  table { width: 100%; border-collapse: collapse; margin: 32px 0; background: #fff; }
+  th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+  #new { padding: 12px 24px; border: 0; border-radius: 999px; background: #1a1a1a; color: #fff; font-size: 18px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<main id="meeting">
+  <section class="half fr" lang="fr">
+    <h2>Français</h2>
+    <div class="captions"></div>
+    <div class="status"></div>
+    <button class="mic" data-speaker="parent" aria-label="Maintenir pour parler (parent, français)">🎤</button>
+  </section>
+  <section class="half en" lang="en">
+    <h2>English</h2>
+    <div class="captions"></div>
+    <div class="status"></div>
+    <button class="mic" data-speaker="teacher" aria-label="Hold to speak (teacher, English)">🎤</button>
+  </section>
+</main>
+<button id="end">End meeting</button>
+
+<section id="summary" hidden>
+  <div class="cols">
+    <div lang="en"><h2>Summary</h2><p id="sum-en"></p></div>
+    <div lang="fr"><h2>Résumé</h2><p id="sum-fr"></p></div>
+  </div>
+  <table>
+    <thead><tr><th>Owner</th><th>Task EN</th><th>Tâche FR</th><th>Due</th></tr></thead>
+    <tbody id="items"></tbody>
+  </table>
+  <button id="new">New meeting</button>
+</section>
+
+<script>
+const params = new URLSearchParams(location.search);
+const MOCK = params.has('mock');
+if (params.has('flat')) document.body.classList.add('flat');
+
+const LANG = { parent: 'fr', teacher: 'en' };
+const transcript = []; // turns without audio_b64; doubles as history for /api/turn
+const mimeType = window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+  ? 'audio/webm;codecs=opus' : 'audio/mp4';
+let stream = null, recorder = null, chunks = [], startedAt = 0, active = null;
+
+const half = lang => document.querySelector('.half.' + lang);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function setStatus(lang, text, isError = false) {
+  const el = half(lang).querySelector('.status');
+  el.textContent = text;
+  el.classList.toggle('error', isError);
+}
+
+function setBusy(busy) {
+  document.querySelectorAll('.mic, #end').forEach(b => b.disabled = busy);
+}
+
+// Ask for the mic once, on page load.
+navigator.mediaDevices.getUserMedia({ audio: true })
+  .then(s => stream = s)
+  .catch(() => { if (!MOCK) ['fr', 'en'].forEach(l => setStatus(l, 'Microphone blocked', true)); });
+
+// --- Recording (hold to talk) ---
+
+function start(speaker) {
+  if (active) return;
+  const lang = LANG[speaker];
+  if (!stream && !MOCK) return setStatus(lang, 'Microphone not available', true);
+  active = speaker;
+  startedAt = performance.now();
+  half(lang).classList.add('speaking');
+  setStatus(lang, '');
+  if (stream) {
+    chunks = [];
+    recorder = new MediaRecorder(stream, { mimeType });
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.start();
+  }
+}
+
+function stop() {
+  if (!active) return;
+  const speaker = active;
+  active = null;
+  half(LANG[speaker]).classList.remove('speaking');
+  const tooShort = performance.now() - startedAt < 500;
+  if (!recorder) { if (!tooShort) sendTurn(null, speaker); return; } // mock without a mic
+  recorder.onstop = () => { if (!tooShort) sendTurn(new Blob(chunks, { type: mimeType }), speaker); };
+  recorder.stop();
+  recorder = null;
+}
+
+document.querySelectorAll('.mic').forEach(btn => {
+  btn.onpointerdown = () => start(btn.dataset.speaker);
+  btn.onpointerup = btn.onpointerleave = btn.onpointercancel = stop;
+  btn.oncontextmenu = e => e.preventDefault(); // no long-press menu on touch
+});
+
+// --- Turns ---
+
+async function request(url, options) {
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
+  return data;
+}
+
+function postTurn(blob, speaker) {
+  const form = new FormData();
+  form.append('audio', blob, mimeType.startsWith('audio/webm') ? 'turn.webm' : 'turn.mp4');
+  form.append('speaker', speaker);
+  form.append('history', JSON.stringify(transcript.slice(-6)));
+  return request('/api/turn', { method: 'POST', body: form });
+}
+
+async function sendTurn(blob, speaker) {
+  const lang = LANG[speaker];
+  setBusy(true);
+  setStatus(lang, lang === 'fr' ? 'Traduction…' : 'Translating…');
+  try {
+    const { audio_b64, ...turn } = MOCK ? await mockTurn(speaker) : await postTurn(blob, speaker);
+    transcript.push(turn);
+    renderTurn(turn); // caption first, then audio
+    setStatus(lang, '');
+    if (audio_b64) new Audio('data:audio/mpeg;base64,' + audio_b64).play().catch(() => {});
+  } catch (e) {
+    setStatus(lang, e.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+// Each half shows only its own language: own words bold, the other side's translated.
+function renderTurn(turn) {
+  for (const lang of ['fr', 'en']) {
+    const own = lang === turn.source_lang;
+    const p = document.createElement('p');
+    p.className = own ? 'own' : 'other';
+    p.textContent = own ? turn.source_text : turn.target_text;
+    half(lang).querySelector('.captions').append(p);
+    p.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }
+}
+
+// --- Summary ---
+
+document.getElementById('end').onclick = async () => {
+  setBusy(true);
+  try {
+    const s = MOCK ? (await sleep(600), MOCK_SUMMARY) : await request('/api/summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript }),
+    });
+    document.getElementById('sum-en').textContent = s.summary_en;
+    document.getElementById('sum-fr').textContent = s.summary_fr;
+    const tbody = document.getElementById('items');
+    for (const item of s.action_items) {
+      const row = tbody.insertRow();
+      for (const key of ['owner', 'task_en', 'task_fr', 'due']) row.insertCell().textContent = item[key];
+    }
+    stream?.getTracks().forEach(t => t.stop());
+    document.getElementById('meeting').hidden = true;
+    document.getElementById('end').hidden = true;
+    document.getElementById('summary').hidden = false;
+  } catch (e) {
+    setStatus('en', e.message, true);
+    setBusy(false);
+  }
+};
+document.getElementById('new').onclick = () => location.reload();
+
+// --- Mock mode (?mock=1): demo-script responses, no backend ---
+
+const MOCK_LINES = {
+  teacher: [
+    ["Léo is doing well in reading, but he's below benchmark in math.",
+     "Léo progresse bien en lecture, mais il est en dessous du niveau attendu en mathématiques."],
+    ["We'd like to start math support twice a week beginning March 3, and we can discuss an IEP evaluation.",
+     "Nous aimerions commencer un soutien en mathématiques deux fois par semaine à partir du 3 mars, et nous pouvons discuter d'une évaluation pour un plan d'éducation individualisé (IEP)."],
+    ["Please sign the consent form by Friday.",
+     "Veuillez signer le formulaire de consentement d'ici vendredi."],
+  ],
+  parent: [
+    ["Qu'est-ce que ça veut dire, en dessous du niveau ? Est-ce qu'il a besoin d'aide ?",
+     "What does below level mean? Does he need help?"],
+    ["D'accord. Qu'est-ce que je dois faire de mon côté ?",
+     "Okay. What do I need to do on my end?"],
+  ],
+};
+const mockCount = { teacher: 0, parent: 0 };
+
+async function mockTurn(speaker) {
+  await sleep(600);
+  const lines = MOCK_LINES[speaker];
+  const [source_text, target_text] = lines[mockCount[speaker]++ % lines.length];
+  const source_lang = LANG[speaker];
+  return { speaker, source_lang, target_lang: source_lang === 'fr' ? 'en' : 'fr', source_text, target_text, audio_b64: '' };
+}
+
+const MOCK_SUMMARY = {
+  summary_en: "Léo is doing well in reading but is below benchmark in math. The school will start math support twice a week beginning March 3 and discuss an IEP evaluation. The parent will sign the consent form by Friday.",
+  summary_fr: "Léo progresse bien en lecture, mais il est en dessous du niveau attendu en mathématiques. L'école commencera un soutien en mathématiques deux fois par semaine à partir du 3 mars et discutera d'une évaluation pour un IEP. Vous signerez le formulaire de consentement d'ici vendredi.",
+  action_items: [
+    { owner: 'Teacher', task_en: 'Start math support twice a week', task_fr: 'Commencer le soutien en mathématiques deux fois par semaine', due: 'March 3' },
+    { owner: 'Teacher', task_en: 'Discuss an IEP evaluation', task_fr: "Discuter d'une évaluation pour un IEP", due: '' },
+    { owner: 'Parent', task_en: 'Sign the consent form', task_fr: 'Signer le formulaire de consentement', due: 'Friday' },
+  ],
+};
+</script>
+</body>
+</html>
