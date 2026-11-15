@@ -1,5 +1,7 @@
 # ParentBridge
 
+![ParentBridge: Bonjour ↔ Hello](docs/images/thumbnail.png)
+
 **A live voice interpreter for parent–teacher meetings, in person or on video, plus an AI agent that follows up with the parent in their own language.**
 
 A French-speaking parent and an English-speaking teacher talk to each other directly. Each person taps their mic, speaks, and the other hears it in their own language about two seconds later, with captions in both languages. When the meeting ends, ParentBridge writes a bilingual summary with action items. An agent then reads the student's past meetings, catches commitments that slipped, and drafts a follow-up the parent can read, or hear, in French.
@@ -19,6 +21,8 @@ When a family doesn't share the school's language, the parent–teacher meeting 
 
 ## Features
 
+![One device, two languages: side by side on a laptop, face to face on a tablet or phone](docs/images/in-person.jpg)
+
 - **Tap to talk, two languages.** One mic per person, and the button decides the language. A full turn (speech → translation → voice) takes about 1.5–2 s.
 - **In person or on video.**
   - **In person:** one laptop with the two languages side by side. On a tablet or phone lying flat on the table, the screen splits face to face, with the English half rotated toward the teacher.
@@ -32,6 +36,17 @@ When a family doesn't share the school's language, the parent–teacher meeting 
   - The parent sees "Nouveau message" on their dashboard and can tap ▶ to hear it in French.
 - **Viewer-first language.** The teacher reads English first and the parent reads French first; the other language is a quieter echo.
 - **Accounts for teachers and parents.** A teacher has a dashboard, can start meetings and video calls, and saves summaries. A parent has a read-only dashboard of their child's meetings and messages.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![While translating, a light travels from the speaker's mic to the listener's](docs/images/translating.jpg) | ![Bilingual summary with an action-item table](docs/images/summary.jpg) |
+| **Translating:** the light travels to the listener and turns teal when the voice starts | **Summary:** both languages, plus who does what, by when |
+| ![The follow-up agent's steps, open items and drafted message](docs/images/follow-up-agent.jpg) | ![Translated video call, teacher's view](docs/images/video-call.jpg) |
+| **Follow-up agent:** each tool step streams in, then open items and a message for the parent | **Video call:** peer-to-peer video; each person hears only the translation |
+
+![The parent's phone: dashboard, the follow-up read aloud in French, and the video call](docs/images/parent-phone.jpg)
 
 ## How it works
 
