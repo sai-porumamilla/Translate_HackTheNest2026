@@ -9,31 +9,35 @@
   [hidden] { display: none !important; }
   body { margin: 0; height: 100vh; font: 22px/1.4 system-ui, sans-serif; background: #eef0f3; color: #1a1a1a; }
 
-  /* Meeting: two halves, French left, English right */
-  #meeting { height: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
-  .half { display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #fff; border-radius: 24px; min-height: 0; transition: box-shadow .2s; }
-  .half.speaking { box-shadow: 0 0 0 4px #7c5cff, 0 0 48px 8px #7c5cff88; } /* later: animated Siri-style glow */
-  .half h2 { margin: 0; font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: #888; }
-  .en h2 { text-align: right; }
-  .captions { flex: 1; overflow-y: auto; }
-  .captions p { margin: 0 0 16px; }
-  .captions .own { font-weight: 600; }
-  .captions .other { color: #555; }
+  /* Meeting: French left, English right. Two white panels sit behind a shared caption grid,
+     so each turn's French and English line up on the same row. */
+  #meeting { height: 100%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 12px; padding: 12px; }
+  .panel { grid-row: 1 / -1; background: #fff; border-radius: 24px; transition: box-shadow .2s; }
+  .panel.fr, h2.fr, .controls.fr { grid-column: 1; }
+  .panel.en, h2.en, .controls.en { grid-column: 2; }
+  .panel.speaking { box-shadow: 0 0 0 4px #7c5cff, 0 0 48px 8px #7c5cff88; } /* later: animated Siri-style glow */
+  h2 { grid-row: 1; margin: 0; padding: 24px 24px 12px; font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: #888; }
+  h2.en { text-align: right; }
+
+  .captions { grid-column: 1 / -1; grid-row: 2; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; align-content: start; }
+  .cap { padding: 0 24px 20px; }
+  .cap .label { display: block; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #888; }
+  .cap p { margin: 2px 0 0; }
+  .cap.other p { color: #555; }
+
+  .controls { grid-row: 3; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px 24px 24px; }
   .status { min-height: 1.4em; font-size: 18px; color: #888; text-align: center; }
   .status.error { color: #c0392b; }
-  .mic { align-self: center; width: 128px; height: 128px; border-radius: 50%; border: 0; background: #1a1a1a; color: #fff; font-size: 52px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .mic { width: 128px; height: 128px; border-radius: 50%; border: 0; background: #1a1a1a; color: #fff; font-size: 52px; cursor: pointer; touch-action: manipulation; }
+  .mic[aria-pressed="true"] { background: #7c5cff; }
   .mic:disabled { opacity: .35; cursor: default; }
   #end { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border: 0; border-radius: 999px; background: #c0392b; color: #fff; font-size: 18px; cursor: pointer; }
   #end:disabled { opacity: .5; }
 
-  /* ?flat=1 — tablet lies flat, each half faces the person at its end. Tune on the real device. */
-  .flat .fr { writing-mode: vertical-rl; }
-  .flat .en { writing-mode: vertical-rl; transform: rotate(180deg); }
-
   /* Summary */
   #summary { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
   #summary .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
-  #summary h2 { font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: #888; }
+  #summary h2 { padding: 0; }
   table { width: 100%; border-collapse: collapse; margin: 32px 0; background: #fff; }
   th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
   #new { padding: 12px 24px; border: 0; border-radius: 999px; background: #1a1a1a; color: #fff; font-size: 18px; cursor: pointer; }
@@ -42,18 +46,19 @@
 <body>
 
 <main id="meeting">
-  <section class="half fr" lang="fr">
-    <h2>Français</h2>
-    <div class="captions"></div>
+  <div class="panel fr"></div>
+  <div class="panel en"></div>
+  <h2 class="fr" lang="fr">Français</h2>
+  <h2 class="en">English</h2>
+  <div class="captions"></div>
+  <div class="controls fr" lang="fr">
     <div class="status"></div>
-    <button class="mic" data-speaker="parent" aria-label="Maintenir pour parler (parent, français)">🎤</button>
-  </section>
-  <section class="half en" lang="en">
-    <h2>English</h2>
-    <div class="captions"></div>
+    <button class="mic" data-speaker="parent" aria-pressed="false" aria-label="Touchez pour parler (parent, français)">🎤</button>
+  </div>
+  <div class="controls en">
     <div class="status"></div>
-    <button class="mic" data-speaker="teacher" aria-label="Hold to speak (teacher, English)">🎤</button>
-  </section>
+    <button class="mic" data-speaker="teacher" aria-pressed="false" aria-label="Tap to speak (teacher, English)">🎤</button>
+  </div>
 </main>
 <button id="end">End meeting</button>
 
@@ -72,19 +77,22 @@
 <script>
 const params = new URLSearchParams(location.search);
 const MOCK = params.has('mock');
-if (params.has('flat')) document.body.classList.add('flat');
 
 const LANG = { parent: 'fr', teacher: 'en' };
+const ROLE = {
+  fr: { parent: 'Parent', teacher: 'Enseignant', translated: 'traduction' },
+  en: { parent: 'Parent', teacher: 'Teacher', translated: 'translation' },
+};
 const transcript = []; // turns without audio_b64; doubles as history for /api/turn
 const mimeType = window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
   ? 'audio/webm;codecs=opus' : 'audio/mp4';
 let stream = null, recorder = null, chunks = [], startedAt = 0, active = null;
 
-const half = lang => document.querySelector('.half.' + lang);
+const $ = s => document.querySelector(s);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function setStatus(lang, text, isError = false) {
-  const el = half(lang).querySelector('.status');
+  const el = $(`.controls.${lang} .status`);
   el.textContent = text;
   el.classList.toggle('error', isError);
 }
@@ -98,16 +106,26 @@ navigator.mediaDevices.getUserMedia({ audio: true })
   .then(s => stream = s)
   .catch(() => { if (!MOCK) ['fr', 'en'].forEach(l => setStatus(l, 'Microphone blocked', true)); });
 
-// --- Recording (hold to talk) ---
+// --- Recording (tap to start, tap again to stop) ---
+
+function setRecording(speaker, on) {
+  const lang = LANG[speaker];
+  $(`.panel.${lang}`).classList.toggle('speaking', on);
+  const btn = $(`.mic[data-speaker="${speaker}"]`);
+  btn.setAttribute('aria-pressed', on);
+  btn.textContent = on ? '⏹' : '🎤';
+  // The other mic stays off while one side is talking.
+  document.querySelectorAll('.mic').forEach(b => { if (b !== btn) b.disabled = on; });
+  $('#end').disabled = on;
+  setStatus(lang, on ? (lang === 'fr' ? 'Écoute en cours… touchez pour arrêter' : 'Listening… tap to stop') : '');
+}
 
 function start(speaker) {
-  if (active) return;
   const lang = LANG[speaker];
   if (!stream && !MOCK) return setStatus(lang, 'Microphone not available', true);
   active = speaker;
   startedAt = performance.now();
-  half(lang).classList.add('speaking');
-  setStatus(lang, '');
+  setRecording(speaker, true);
   if (stream) {
     chunks = [];
     recorder = new MediaRecorder(stream, { mimeType });
@@ -117,21 +135,21 @@ function start(speaker) {
 }
 
 function stop() {
-  if (!active) return;
   const speaker = active;
   active = null;
-  half(LANG[speaker]).classList.remove('speaking');
-  const tooShort = performance.now() - startedAt < 500;
-  if (!recorder) { if (!tooShort) sendTurn(null, speaker); return; } // mock without a mic
-  recorder.onstop = () => { if (!tooShort) sendTurn(new Blob(chunks, { type: mimeType }), speaker); };
-  recorder.stop();
+  setRecording(speaker, false);
+  const rec = recorder;
   recorder = null;
+  if (performance.now() - startedAt < 500) { rec?.stop(); return; } // ignore accidental taps
+  setBusy(true); // lock the mics now; the recorder's onstop fires a moment later
+  if (!rec) return sendTurn(null, speaker); // mock without a mic
+  rec.onstop = () => sendTurn(new Blob(chunks, { type: mimeType }), speaker);
+  rec.stop();
 }
 
-document.querySelectorAll('.mic').forEach(btn => {
-  btn.onpointerdown = () => start(btn.dataset.speaker);
-  btn.onpointerup = btn.onpointerleave = btn.onpointercancel = stop;
-  btn.oncontextmenu = e => e.preventDefault(); // no long-press menu on touch
+document.querySelectorAll('.mic').forEach(btn => btn.onclick = () => {
+  if (active === btn.dataset.speaker) stop();
+  else if (!active) start(btn.dataset.speaker);
 });
 
 // --- Turns ---
@@ -161,6 +179,7 @@ async function sendTurn(blob, speaker) {
     renderTurn(turn); // caption first, then audio
     setStatus(lang, '');
     if (audio_b64) new Audio('data:audio/mpeg;base64,' + audio_b64).play().catch(() => {});
+    else speak(turn.target_text, turn.target_lang);
   } catch (e) {
     setStatus(lang, e.message, true);
   } finally {
@@ -168,21 +187,38 @@ async function sendTurn(blob, speaker) {
   }
 }
 
-// Each half shows only its own language: own words bold, the other side's translated.
+// TEMP: browser Web Speech TTS when a turn has no audio (mock mode). Remove once ElevenLabs audio comes back.
+function speak(text, lang) {
+  if (!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === 'fr' ? 'fr-FR' : 'en-US';
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+// One row per turn: French cell then English cell, so the grid keeps them aligned.
 function renderTurn(turn) {
+  let last;
   for (const lang of ['fr', 'en']) {
     const own = lang === turn.source_lang;
+    const cell = document.createElement('div');
+    cell.className = 'cap ' + (own ? 'own' : 'other');
+    cell.lang = lang;
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = ROLE[lang][turn.speaker] + (own ? '' : ' · ' + ROLE[lang].translated);
     const p = document.createElement('p');
-    p.className = own ? 'own' : 'other';
     p.textContent = own ? turn.source_text : turn.target_text;
-    half(lang).querySelector('.captions').append(p);
-    p.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    cell.append(label, p);
+    $('.captions').append(cell);
+    last = cell;
   }
+  last.scrollIntoView({ block: 'end', behavior: 'smooth' });
 }
 
 // --- Summary ---
 
-document.getElementById('end').onclick = async () => {
+$('#end').onclick = async () => {
   setBusy(true);
   try {
     const s = MOCK ? (await sleep(600), MOCK_SUMMARY) : await request('/api/summary', {
@@ -190,23 +226,22 @@ document.getElementById('end').onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transcript }),
     });
-    document.getElementById('sum-en').textContent = s.summary_en;
-    document.getElementById('sum-fr').textContent = s.summary_fr;
-    const tbody = document.getElementById('items');
+    $('#sum-en').textContent = s.summary_en;
+    $('#sum-fr').textContent = s.summary_fr;
     for (const item of s.action_items) {
-      const row = tbody.insertRow();
+      const row = $('#items').insertRow();
       for (const key of ['owner', 'task_en', 'task_fr', 'due']) row.insertCell().textContent = item[key];
     }
     stream?.getTracks().forEach(t => t.stop());
-    document.getElementById('meeting').hidden = true;
-    document.getElementById('end').hidden = true;
-    document.getElementById('summary').hidden = false;
+    $('#meeting').hidden = true;
+    $('#end').hidden = true;
+    $('#summary').hidden = false;
   } catch (e) {
     setStatus('en', e.message, true);
     setBusy(false);
   }
 };
-document.getElementById('new').onclick = () => location.reload();
+$('#new').onclick = () => location.reload();
 
 // --- Mock mode (?mock=1): demo-script responses, no backend ---
 
