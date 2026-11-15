@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, LANG, MOCK } from '../api.js';
-import { analyserFor, audioContext, fakeVoice, glowFollow, glowStop, loudness } from '../audio.js';
+import { analyserFor, audioContext, envelopeOf, fakeVoice, glowFollow, glowStop, loudness, player, unlockPlayer } from '../audio.js';
 import { Dots, MicIcon, SpeakerIcon, StopIcon } from '../components/icons.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 
@@ -47,22 +47,22 @@ export default function Meeting() {
   const [scrolled, setScrolled] = useState(false);
   const faceToFace = useMediaQuery(FACE_TO_FACE);
 
-  const stream = useRef(null), micAnalyser = useRef(null), recorder = useRef(null);
+  const recorder = useRef(null); // { rec, chunks, stream } while someone is talking
   const startedAt = useRef(0), skipPlayback = useRef(null), history = useRef([]);
   const bloom = { fr: useRef(null), en: useRef(null) };
   const micButton = { parent: useRef(null), teacher: useRef(null) };
 
-  // Ask for the mic when the meeting opens; release it when leaving the page.
+  // Ask for mic permission when the meeting opens, then let go of the mic straight away.
+  // The mic is only open while someone is talking: while a page records, iOS plays sound through the
+  // quiet earpiece, which made the translation inaudible on iPhone.
   useEffect(() => {
-    let left = false;
     (navigator.mediaDevices ? navigator.mediaDevices.getUserMedia({ audio: true }) : Promise.reject())
-      .then(s => (left ? s.getTracks().forEach(t => t.stop()) : (stream.current = s)))
+      .then(s => s.getTracks().forEach(t => t.stop()))
       .catch(() => { if (!MOCK) setBlocked(true); }); // denied, or plain HTTP (no mediaDevices at all)
     return () => {
-      left = true;
       skipPlayback.current?.();
       glowStop();
-      stream.current?.getTracks().forEach(t => t.stop());
+      recorder.current?.stream.getTracks().forEach(t => t.stop());
     };
   }, []);
 
@@ -96,33 +96,43 @@ export default function Meeting() {
 
   function start(speaker) {
     const lang = LANG[speaker];
-    if (!stream.current && !MOCK) return setError({ lang, text: lang === 'fr' ? 'Micro non disponible' : 'Microphone not available' });
     setError(null);
-    const ctx = audioContext(); // inside the tap, so the browser allows audio
-    if (stream.current && !micAnalyser.current) micAnalyser.current = analyserFor(ctx.createMediaStreamSource(stream.current));
+    const ctx = audioContext(); // both inside the tap, so iOS allows audio for the rest of the meeting
+    unlockPlayer();
     startedAt.current = performance.now();
     setPhase({ name: 'recording', speaker });
-    lightUp(lang, PURPLE, micAnalyser.current ? () => loudness(micAnalyser.current) : fakeVoice);
-    if (stream.current) {
+    lightUp(lang, PURPLE, fakeVoice); // switches to the real mic level as soon as the mic is open
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      if (recorder.current !== 'pending' + speaker) return stream.getTracks().forEach(t => t.stop()); // already stopped
+      const analyser = analyserFor(ctx.createMediaStreamSource(stream));
+      glowFollow(bloom[lang].current, () => loudness(analyser));
       const chunks = [];
-      const rec = new MediaRecorder(stream.current, { mimeType });
+      const rec = new MediaRecorder(stream, { mimeType });
       rec.ondataavailable = e => chunks.push(e.data);
       rec.start();
-      recorder.current = { rec, chunks };
-    }
+      recorder.current = { rec, chunks, stream };
+    }, () => {
+      if (MOCK) return; // mock mode works without a mic
+      recorder.current = null;
+      setPhase({ name: 'idle' });
+      glowStop();
+      setError({ lang, text: lang === 'fr' ? 'Micro non disponible' : 'Microphone not available' });
+    });
+    recorder.current = 'pending' + speaker; // mic is opening
   }
 
   function stop(speaker) {
     glowStop();
-    const r = recorder.current;
+    const r = typeof recorder.current === 'object' ? recorder.current : null; // null = mic never opened (mock)
     recorder.current = null;
-    if (performance.now() - startedAt.current < 500) { // ignore accidental taps
-      r?.rec.stop();
+    const release = () => r?.stream.getTracks().forEach(t => t.stop()); // close the mic: iOS goes back to the loudspeaker
+    if (performance.now() - startedAt.current < 500 || (!r && !MOCK)) { // accidental tap, or the mic never opened
+      if (r) { r.rec.onstop = release; r.rec.stop(); }
       return setPhase({ name: 'idle' });
     }
     startHandoff(speaker);
     if (!r) return sendTurn(null, speaker); // mock without a mic
-    r.rec.onstop = () => sendTurn(new Blob(r.chunks, { type: mimeType }), speaker);
+    r.rec.onstop = () => { release(); sendTurn(new Blob(r.chunks, { type: mimeType }), speaker); };
     r.rec.stop();
   }
 
@@ -170,14 +180,15 @@ export default function Meeting() {
       };
 
       if (audio_b64) {
-        const audio = new Audio('data:audio/mpeg;base64,' + audio_b64);
-        const ctx = audioContext();
-        const analyser = analyserFor(ctx.createMediaElementSource(audio));
-        analyser.connect(ctx.destination); // the analyser sits between the audio and the speakers
-        audio.onplaying = () => started(() => loudness(analyser) * 0.4); // TTS is mastered much louder than a mic
-        audio.onended = audio.onerror = finish;
-        skipPlayback.current = () => { audio.pause(); finish(); };
-        audio.play().catch(finish);
+        // The shared <audio> player (unlocked in the mic tap) plays the ElevenLabs mp3 directly, not through Web Audio.
+        // The glow follows the mp3's loudness curve at the current playback time.
+        let envelope = null;
+        envelopeOf(audio_b64).then(e => { envelope = e; }, () => {});
+        player.onplaying = () => started(() => (envelope?.[Math.floor(player.currentTime * 50)] ?? 0.05) * 0.4);
+        player.onended = player.onerror = finish;
+        skipPlayback.current = () => { player.pause(); finish(); };
+        player.src = 'data:audio/mpeg;base64,' + audio_b64;
+        player.play().catch(finish);
       } else if (window.speechSynthesis) {
         // TEMP: browser voice for mock mode (no audio_b64). Real turns always use the ElevenLabs mp3 above.
         const u = new SpeechSynthesisUtterance(turn.target_text);
