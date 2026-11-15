@@ -39,18 +39,18 @@ Timebox: 2–3 hours. If it isn't working end to end on the live link by then, s
 
 **Out of scope for now. Don't build these unless asked:** video calling (paused), SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning.
 
-## React app (`web/`, Sun): exploration, not deployed
-A Vite + React version of the frontend with separate pages. `frontend/index.html` is still the deployed app and the demo fallback; `web/` does not change what Render serves.
+## Frontend = React app (`web/`, Sun): this is what's deployed
+The plain-JS `frontend/index.html` is retired (it's in git history). The source is `web/`; **`frontend/` is now build output**.
+- **Never edit `frontend/` by hand.** Change `web/src/`, then run `cd web && npx vite build`, which rewrites `frontend/` (`index.html` + `assets/`). Commit both. FastAPI and Render serve `frontend/` exactly as before: no backend or Render build change, no Node on Render.
 - Pages (HashRouter, so URLs look like `/#/dashboard` and FastAPI can keep serving plain static files): `/login`, `/dashboard`, `/meeting`, `/summary`, `/meetings/:id`. Same API contract as above; `?mock=1` fakes everything (mock password `demo`).
-- Same design language as `frontend/index.html`, plus: a smoother handoff (one light travels from the speaker's mic to the listener's and lands when the ElevenLabs audio starts), and a **face-to-face layout** on portrait phones/tablets (English half rotated 180° for the teacher across the table, French half for the parent).
-- Run: `cd web && npm install && npx vite` → http://localhost:5173. Vite forwards `/api` to uvicorn on :8000, so run the backend too for real turns.
-- To deploy it later: build (`npx vite build`) and have FastAPI serve `web/dist` instead of `frontend/` (a backend change), plus Node in the Render build. Agree this together before switching.
+- Roles: a teacher's dashboard has "New meeting" and their saved meetings; a parent's dashboard is a read-only list of their child's meetings. Only a teacher's meeting is saved; guests (no sign-in) and parents never call `POST /api/meetings`.
+- Design: "Paper & Ink" palette (warm paper, ink text, terracotta = a person talking, deep teal = the interpreter talking; all white text ≥ 4.5:1). The handoff light travels from the speaker's mic to the listener's and lands when the ElevenLabs audio starts. **Face-to-face layout** on portrait phones/tablets (English half rotated 180° for the teacher across the table, French half for the parent).
+- Dev: `cd web && npm install && npx vite` → http://localhost:5173. Vite forwards `/api` to uvicorn on :8000, so run the backend too for real turns.
 
 ## Stack
 - Backend: Python 3.11+, FastAPI, uvicorn, python-multipart, python-dotenv, `elevenlabs` SDK, `anthropic` SDK. (Switched from OpenAI on Sat: no sponsor OpenAI credits.)
 - Phase 2 adds: `psycopg[binary]` (Postgres driver), and Starlette's `SessionMiddleware` for a signed session cookie (requires `itsdangerous`). Passwords are hashed with the standard library (`hashlib.scrypt` + a random salt); no auth library.
-- Frontend: a single `frontend/index.html` with plain JS and inline CSS. Recording uses `MediaRecorder`; the speaking glow uses the Web Audio API.
-- React app (`web/`, not deployed): React 19, React Router 7, Vite 8. Dependencies are in `web/package.json`; `web/node_modules/` and `web/dist/` are gitignored.
+- Frontend: React 19, React Router 7, Vite 8 in `web/` (dependencies in `web/package.json`; `web/node_modules/` is gitignored). Built into `frontend/`. Recording uses `MediaRecorder`; the speaking glow uses the Web Audio API.
 - FastAPI serves `frontend/` as static files at `/`. One server, one origin, no CORS setup.
 - The frontend holds the live transcript in memory and sends history with each request. Postgres stores only finished meeting summaries (Phase 2).
 - Deploy: Render (web service; start command `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`).
@@ -64,9 +64,10 @@ backend/
   db.py            # Phase 2: Postgres tables, password hashing, queries
   glossary.json    # EN -> FR education terms
   requirements.txt
-frontend/
-  index.html          # deployed app (plain JS)
-web/                  # React version (Vite), not deployed yet
+frontend/             # BUILD OUTPUT of web/ (served by FastAPI/Render); don't edit by hand
+  index.html
+  assets/
+web/                  # React source (Vite)
   src/api.js          # real + mock API (same contract)
   src/audio.js        # Web Audio + speaking glow loop
   src/pages/          # Login, Dashboard, Meeting, Summary, PastMeeting

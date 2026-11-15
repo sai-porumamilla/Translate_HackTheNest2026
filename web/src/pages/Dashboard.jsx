@@ -6,31 +6,36 @@ import { useAuth } from '../auth.jsx';
 const STAGGER = [0, 40, 70, 95, 115, 130]; // ms; short and non-uniform, then the rest land together
 
 export default function Dashboard() {
-  const { teacher, setTeacher } = useAuth();
+  const { user, setUser } = useAuth();
+  const isTeacher = user.role === 'teacher'; // parents get a read-only list of their child's meetings
   const navigate = useNavigate();
   const [meetings, setMeetings] = useState(null); // null = loading
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.meetings().then(setMeetings, e => (e.status === 401 ? setTeacher(null) : setError(e.message)));
-  }, [setTeacher]);
+    api.meetings().then(setMeetings, e => (e.status === 401 ? setUser(null) : setError(e.message)));
+  }, [setUser]);
 
   async function signOut() {
     await api.logout().catch(() => {});
-    setTeacher(null);
+    setUser(null);
     navigate('/login');
   }
 
   return (
     <main className="dashboard page">
       <header className="dash-head">
-        <h1>Bonjour · Hello, {teacher.name}</h1>
+        <h1>Bonjour · Hello, {user.name}</h1>
         <div className="row">
           <button className="btn" onClick={signOut}><span lang="fr">Déconnexion</span> · Sign out</button>
-          <Link className="btn primary" to="/meeting"><span lang="fr">Nouvelle rencontre</span> · New meeting</Link>
+          {isTeacher && <Link className="btn primary" to="/meeting"><span lang="fr">Nouvelle rencontre</span> · New meeting</Link>}
         </div>
       </header>
-      <h2 className="eyebrow"><span lang="fr">Rencontres récentes</span> · Recent meetings</h2>
+      <h2 className="eyebrow">
+        {isTeacher
+          ? <><span lang="fr">Rencontres récentes</span> · Recent meetings</>
+          : <><span lang="fr">Les rencontres de votre enfant</span> · Your child's meetings</>}
+      </h2>
       {error && <p className="muted">{error}</p>}
       {!meetings && !error && <p className="muted">Chargement… · Loading…</p>}
       {meetings?.length === 0 && <p className="muted">Aucune rencontre pour l’instant · No meetings yet</p>}

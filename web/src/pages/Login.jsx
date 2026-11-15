@@ -4,11 +4,11 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 
 export default function Login() {
-  const { teacher, setTeacher } = useAuth();
+  const { user, setUser } = useAuth();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  if (teacher) return <Navigate to="/dashboard" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function submit(e) {
     e.preventDefault();
@@ -16,7 +16,7 @@ export default function Login() {
     setBusy(true);
     setError('');
     try {
-      setTeacher(await api.login(form.get('email'), form.get('password')));
+      setUser(await api.login(form.get('email'), form.get('password')));
       navigate('/dashboard');
     } catch (err) {
       setError(

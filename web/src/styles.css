@@ -1,21 +1,37 @@
-/* ParentBridge design language (same as frontend/index.html): grey canvas, white rounded cards,
-   purple = a person talking / primary action, teal = ParentBridge talking. */
+/* ParentBridge design language, "Paper & Ink" (Figma "Color research", option A):
+   warm notebook paper, ink text, and two meaningful colours:
+   --voice = a person talking / primary action (terracotta), --interp = ParentBridge, the interpreter, talking (deep teal).
+   Solid colours carry white text (AA ≥ 4.5:1: voice 5.2, interp 5.5); the *-glow colours are lighter, only for the soft light. */
 :root {
-  --bg: #eef0f3;
-  --card: #fff;
-  --ink: #1a1a1a;
-  --text-2: #555;
-  --grey: #596171;
-  --muted: #888;
-  --line: #dce0e7;
-  --purple: #7c5cff;
-  --teal: #14b8a6;
+  --bg: #f4f1ea;
+  --card: #fffdf8;
+  --ink: #1c2430;
+  --text-2: #4a5160;
+  --grey: #5b6270;
+  --muted: #7d7a72;
+  --line: #e4ddd0;
+  --voice: #c2410c;
+  --voice-glow: #f97316;
+  --interp: #0f766e;
+  --interp-glow: #14b8a6;
   --red: #b42318;
-  --end: #c0392b;
+  --end: #1c2430;          /* ink, not alarm red: ending a meeting isn't an emergency */
   --radius-card: 24px;
   --ease-out: cubic-bezier(.23, 1, .32, 1);        /* entrances, presses */
   --ease-in-out: cubic-bezier(.77, 0, .175, 1);    /* things moving across the screen */
   --ease-glide: cubic-bezier(.16, 1, .3, 1);       /* long expo ease-out: the handoff light's open-ended trip */
+  --glow-voice: color-mix(in srgb, var(--voice-glow) 45%, transparent);
+  --glow-interp: color-mix(in srgb, var(--interp-glow) 45%, transparent);
+}
+
+/* Runner-up palettes, kept for comparison with ?theme=b|c in the URL. Both pass AA for white text. */
+:root[data-theme="b"] { /* Civic Blue: trustworthy public-service blue for people, warm amber for the interpreter */
+  --bg: #eef2f6; --card: #fff; --ink: #0f172a; --grey: #4b5567; --line: #d8dee8;
+  --voice: #1d4ed8; --voice-glow: #3b82f6; --interp: #b45309; --interp-glow: #f59e0b; --end: #9f1239;
+}
+:root[data-theme="c"] { /* Maple Ridge: forest green for people, marigold for the interpreter */
+  --bg: #eef1ec; --card: #fbfcf9; --ink: #1d2b24; --grey: #55615a; --line: #dbe2d8;
+  --voice: #1f6f4a; --voice-glow: #34d399; --interp: #9a5b00; --interp-glow: #f2b544; --end: #9b2c2c;
 }
 
 * { box-sizing: border-box; }
@@ -35,7 +51,7 @@ h1 { margin: 0; font-size: 32px; }
   border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink);
   font: 500 18px system-ui, sans-serif; text-decoration: none; cursor: pointer; transition: transform 140ms var(--ease-out); }
 .btn:active { transform: scale(.97); }
-.btn.primary { border-color: var(--purple); background: var(--purple); color: #fff; }
+.btn.primary { border-color: var(--voice); background: var(--voice); color: #fff; }
 .btn:disabled, .btn.disabled { opacity: .35; cursor: default; transform: none; pointer-events: none; }
 
 /* --- Login --- */
@@ -44,7 +60,7 @@ h1 { margin: 0; font-size: 32px; }
 .sub { margin: 4px 0 24px; font-size: 17px; color: var(--grey); }
 label { display: block; margin: 16px 0 6px; font-size: 15px; font-weight: 600; color: var(--grey); }
 input { width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font: 18px system-ui, sans-serif; } /* ≥16px: no iOS zoom */
-input:focus-visible { outline: 3px solid #7c5cff55; border-color: var(--purple); }
+input:focus-visible { outline: 3px solid color-mix(in srgb, var(--voice) 35%, transparent); border-color: var(--voice); }
 .login .btn { width: 100%; margin-top: 24px; }
 .form-error { min-height: 1.4em; margin: 12px 0 0; font-size: 16px; color: var(--red); }
 .guest { display: block; margin-top: 16px; text-align: center; font-size: 16px; color: var(--grey); }
@@ -101,8 +117,8 @@ th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
   transition: transform 140ms var(--ease-out), background-color 200ms ease; }
 .mic:active { transform: scale(.97); }
 .mic svg { display: block; width: 52px; height: 52px; margin: auto; }
-.mic[aria-pressed="true"], .mic.loading { background: var(--purple); }
-.mic.playing { background: var(--teal); }
+.mic[aria-pressed="true"], .mic.loading { background: var(--voice); }
+.mic.playing { background: var(--interp); }
 .mic:disabled { opacity: .35; cursor: default; transform: none; }
 .mic.loading:disabled { opacity: 1; }
 .dots { display: inline-flex; gap: 8px; }
@@ -130,10 +146,10 @@ th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
      when a typical 1.5–2.5 s translation comes back (never parked). Breathes gently if the wait runs long.
    - arrive: retargets mid-flight (a transition, not keyframes) to the listener and fades as their glow fades in. */
 .orb { position: fixed; z-index: 0; width: 220px; height: 220px; margin: -110px 0 0 -110px; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(closest-side, #7c5cffb3, transparent);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--voice-glow) 70%, transparent), transparent);
   transform: translate(var(--x, 0px), var(--y, 0px)) scale(var(--s, .8)); opacity: 0;
   transition: transform 2400ms var(--ease-glide), opacity 200ms var(--ease-out); }
-.orb::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(closest-side, #14b8a6b3, transparent);
+.orb::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--interp-glow) 70%, transparent), transparent);
   opacity: 0; transition: opacity 2400ms ease; } /* purple → teal on the way */
 .orb.travel { --x: calc(var(--dx) * .7); --y: calc(var(--dy) * .7); --s: 1; opacity: 1; }
 /* Same animation value on every later stage, so changing stage never restarts or cancels it (cancelling would snap the size) */

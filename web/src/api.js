@@ -72,13 +72,13 @@ const mockApi = {
   async me() {
     const name = local.get('pb-mock-teacher', null);
     if (!name) throw authError('Not logged in');
-    return { name };
+    return { name, role: 'teacher' };
   },
   async login(email, password) {
     await sleep(400);
     if (password !== 'demo') throw authError('Wrong email or password');
     local.set('pb-mock-teacher', 'Ms. Tremblay');
-    return { name: 'Ms. Tremblay' };
+    return { name: 'Ms. Tremblay', role: 'teacher' };
   },
   async logout() { local.set('pb-mock-teacher', null); return {}; },
   async meetings() { // seeded with one past meeting so the dashboard isn't empty on first look

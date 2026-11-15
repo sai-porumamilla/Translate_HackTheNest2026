@@ -7,7 +7,7 @@ import SummaryView from '../components/SummaryView.jsx';
 // Right after "End meeting": the transcript arrives in router state from /meeting.
 export default function Summary() {
   const { state } = useLocation();
-  const { teacher } = useAuth();
+  const { user } = useAuth();
   const transcript = state?.transcript;
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState('');
@@ -21,7 +21,7 @@ export default function Summary() {
     api.summary(transcript).then(async s => {
       if (!live) return;
       setSummary(s);
-      if (!teacher) return; // guest meeting: nothing to save
+      if (user?.role !== 'teacher') return; // guests and parents don't save (only the teacher's meetings are stored)
       setNote({ text: 'Enregistrement… · Saving…' });
       try {
         await api.saveMeeting({ student: STUDENT, ...s });
@@ -31,14 +31,14 @@ export default function Summary() {
       }
     }, e => live && setError(e.message));
     return () => { live = false; };
-  }, [transcript, teacher, attempt]);
+  }, [transcript, user, attempt]);
 
   if (!transcript) return <Navigate to="/meeting" replace />; // opened directly or after a refresh
 
   const actions = (
     <>
       {error && <button className="btn" onClick={() => setAttempt(a => a + 1)}><span lang="fr">Réessayer</span> · Retry</button>}
-      {teacher && <Link className="btn" to="/dashboard">← <span lang="fr">Tableau de bord</span> · Dashboard</Link>}
+      {user && <Link className="btn" to="/dashboard">← <span lang="fr">Tableau de bord</span> · Dashboard</Link>}
       <Link className={`btn primary${summary ? '' : ' disabled'}`} to="/meeting" aria-disabled={!summary}>
         <span lang="fr">Nouvelle rencontre</span> · New meeting
       </Link>
