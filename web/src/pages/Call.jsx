@@ -53,6 +53,7 @@ export default function Call() {
   const recorder = useRef(null), startedAt = useRef(0), history = useRef([]), chunks = useRef({});
   const lastSignal = useRef(0), polling = useRef(null), live = useRef(false), stageRef = useRef(stage);
   const bloom = useRef(null), micButton = useRef(null), remoteTile = useRef(null), stopPlayback = useRef(null);
+  const lastHeard = useRef(null); // the last translated mp3 this device played: what Repeat plays again
   stageRef.current = stage;
 
   useEffect(() => {
@@ -207,6 +208,7 @@ export default function Call() {
     else if (msg.t === 'floor') { // they started talking
       if (p.name === 'recording' && role === 'teacher') return; // both tapped at once: the teacher keeps the floor
       if (p.name === 'recording') cancelRecording();             // ...and the parent yields
+      if (p.name === 'playing') stopPlayback.current?.();        // they talk over a Repeat: stop it
       setError('');
       setPhase({ name: 'remote' });
     } else if (msg.t === 'free' && (p.name === 'remote' || p.name === 'remoteTranslating')) setPhase({ name: 'idle' });
@@ -227,11 +229,23 @@ export default function Call() {
   // Listener side: show the caption, play the translation on the unlocked player, glow teal.
   function playTurn(turn, audio_b64) {
     addTurn(turn);
+    lastHeard.current = audio_b64;
+    playAudio(audio_b64, true);
+  }
+
+  // Repeat: hear the last translation again, on this device only (nothing is sent or re-translated).
+  function repeat() {
+    if (phaseRef.current.name !== 'idle' || !lastHeard.current) return;
+    setError('');
+    playAudio(lastHeard.current, false);
+  }
+
+  // tellOther: a new turn (the other device waits for 'playing' / 'done'); false for a Repeat.
+  function playAudio(audio_b64, tellOther) {
     const done = () => {
       stopPlayback.current = null;
       glowStop();
-      sendJson(channel.current, { t: 'done' });
-      fadeOrb();
+      if (tellOther) { sendJson(channel.current, { t: 'done' }); fadeOrb(); }
       setPhase({ name: 'idle' });
     };
     if (!audio_b64) return done();
@@ -239,8 +253,7 @@ export default function Call() {
     envelopeOf(audio_b64).then(e => { envelope = e; }, () => {});
     player.onplaying = () => {
       setPhase({ name: 'playing' });
-      sendJson(channel.current, { t: 'playing' });
-      landOrb();
+      if (tellOther) { sendJson(channel.current, { t: 'playing' }); landOrb(); }
       glowFollow(bloom.current, () => (envelope?.[Math.floor(player.currentTime * 50)] ?? 0.05) * 0.4);
       bloom.current?.style.setProperty('--glow', TEAL);
     };
@@ -351,6 +364,18 @@ export default function Call() {
     } else setStage(endStage);
   }
 
+  // Back to the dashboard (or sign-in for a guest parent). Leaving a live call ends it for both, without a summary.
+  function leave() {
+    if (stage === 'live' && !confirm(say(lang, 'Quitter l’appel ? Il prendra fin pour les deux, sans résumé.', 'Leave the call? It ends for both of you, without a summary.'))) return;
+    if (stage !== 'lobby') { sendJson(channel.current, { t: 'end' }); api.signal(code, role, 'end').catch(() => {}); teardown(); }
+    navigate(user ? '/dashboard' : '/login');
+  }
+  const backButton = (
+    <button className="btn back" onClick={leave} disabled={phase.name === 'recording' || phase.name === 'translating'}>
+      ← {say(lang, user ? 'Tableau de bord' : 'Retour', user ? 'Dashboard' : 'Back')}
+    </button>
+  );
+
   // --- Screens ---
 
   if (stage === 'gone') {
@@ -390,6 +415,7 @@ export default function Call() {
             <p className="sub">Vous entendrez la traduction en français. · You’ll hear the translation in your language.</p>
           </>
         )}
+        {backButton}
         <button className="btn primary wide" onClick={join} disabled={!info}>
           {role === 'teacher' ? 'Démarrer l’appel · Start call' : 'Rejoindre l’appel · Join call'}
         </button>
@@ -413,6 +439,7 @@ export default function Call() {
   return (
     <>
       <main className={`call ${stage}`}>
+        {backButton}
         <div ref={remoteTile} className={`remote${phase.name === 'remote' ? ' talking' : ''}`}>
           {stage === 'live'
             ? <video ref={remoteVideo} autoPlay playsInline muted />
@@ -467,10 +494,16 @@ export default function Call() {
               {phase.name === 'recording' ? <StopIcon /> : phase.name === 'translating' ? <Dots /> : phase.name === 'playing' ? <SpeakerIcon /> : <MicIcon />}
             </button>
           </div>
+          <div className="call-actions">
+          <button className="btn" onClick={repeat} disabled={phase.name !== 'idle' || !lastHeard.current}
+                  aria-label={say(lang, 'Répéter la dernière traduction', 'Repeat the last translation')}>
+            ↻ {say(lang, 'Répéter', 'Repeat')}
+          </button>
           <button className="btn end" onClick={() => setConfirming(true)} disabled={phase.name === 'recording' || phase.name === 'translating'}>
             <span className="long">Raccrocher · End call</span>
             <span className="short">{say(lang, 'Raccrocher', 'End call')}</span>
           </button>
+          </div>
         </div>
       </main>
 

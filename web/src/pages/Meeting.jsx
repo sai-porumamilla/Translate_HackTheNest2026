@@ -4,7 +4,8 @@ import { api, LANG, MOCK } from '../api.js';
 import { analyserFor, audioContext, envelopeOf, fakeVoice, glowFollow, glowStop, loudness, player, unlockPlayer } from '../audio.js';
 import { Dots, MicIcon, SpeakerIcon, StopIcon } from '../components/icons.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
-import { Bi } from '../lang.jsx';
+import { useAuth } from '../auth.jsx';
+import { Bi, say, useLang } from '../lang.jsx';
 
 const OTHER = { parent: 'teacher', teacher: 'parent' };
 const ROLE = {
@@ -38,6 +39,8 @@ const mimeType = window.MediaRecorder && MediaRecorder.isTypeSupported('audio/we
 // phase = { name, speaker } while recording/translating, plus listener while playing.
 export default function Meeting() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const lang = useLang();
   const [transcript, setTranscript] = useState([]);
   const [phase, setPhase] = useState({ name: 'idle' });
   const [error, setError] = useState(null); // { lang, text } shown in that side's status line
@@ -50,6 +53,7 @@ export default function Meeting() {
 
   const recorder = useRef(null); // { rec, chunks, stream } while someone is talking
   const startedAt = useRef(0), skipPlayback = useRef(null), history = useRef([]);
+  const lastTurn = useRef(null); // { turn, audio_b64 }: what Repeat plays again
   const bloom = { fr: useRef(null), en: useRef(null) };
   const micButton = { parent: useRef(null), teacher: useRef(null) };
 
@@ -156,6 +160,7 @@ export default function Meeting() {
       const { audio_b64, ...turn } = await api.turn(blob, speaker, history.current.slice(-6));
       history.current = [...history.current, turn];
       setTranscript(history.current); // caption first, then audio
+      lastTurn.current = { turn, audio_b64 };
       await play(turn, audio_b64);    // mics stay locked until the voice finishes (or is skipped)
     } catch (e) {
       setError({ lang, text: e.message === 'No speech detected' ? STATUS.noSpeech[lang] : e.message });
@@ -203,6 +208,19 @@ export default function Meeting() {
         setTimeout(() => { if (!begun) finish(); }, 2000); // some browsers never start (no voices installed)
       } else finish();
     });
+  }
+
+  // Repeat: the listener asks to hear the last translation again (same voice, same glow; nothing is re-translated).
+  async function repeat() {
+    if (phase.name !== 'idle' || !lastTurn.current) return;
+    setError(null);
+    try { await play(lastTurn.current.turn, lastTurn.current.audio_b64); } finally { glowStop(); setPhase({ name: 'idle' }); }
+  }
+
+  // Back to the dashboard. The transcript only lives on this page, so leaving mid-meeting skips the summary.
+  function leave() {
+    if (transcript.length && !confirm(say(lang, 'Quitter sans enregistrer de résumé ?', 'Leave without saving a summary?'))) return;
+    navigate(user ? '/dashboard' : '/login');
   }
 
   function onMic(speaker) {
@@ -281,6 +299,13 @@ export default function Meeting() {
 
   const endRow = (
     <div className="end-row">
+      <button className="btn" onClick={leave} disabled={phase.name === 'recording' || phase.name === 'translating'}>
+        ← {user ? <Bi fr="Tableau de bord" en="Dashboard" /> : <Bi fr="Retour" en="Back" />}
+      </button>
+      <button className="btn" onClick={repeat} disabled={phase.name !== 'idle' || transcript.length === 0}
+              aria-label={say(lang, 'Répéter la dernière traduction', 'Repeat the last translation')}>
+        ↻ <Bi fr="Répéter" en="Repeat" />
+      </button>
       <button className="btn end" disabled={phase.name !== 'idle' || transcript.length === 0} onClick={() => setConfirming(true)}>
         <Bi fr="Terminer" en="End" />
       </button>
