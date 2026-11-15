@@ -12,10 +12,28 @@
   /* Meeting: French left, English right. Two white panels sit behind a shared caption grid,
      so each turn's French and English line up on the same row. */
   #meeting { height: 100%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 12px; padding: 12px; }
-  .panel { grid-row: 1 / -1; background: #fff; border-radius: 24px; transition: box-shadow .2s; }
+  .panel { grid-row: 1 / -1; position: relative; overflow: hidden; background: #fff; border-radius: 24px; }
   .panel.fr, h2.fr, .controls.fr { grid-column: 1; }
   .panel.en, h2.en, .controls.en { grid-column: 2; }
-  .panel.speaking { box-shadow: 0 0 0 4px #7c5cff, 0 0 48px 8px #7c5cff88; } /* later: animated Siri-style glow */
+  #meeting > h2, .captions, .controls { position: relative; } /* keep content painted above the (positioned) panels */
+
+  /* Glow (Figma "Speaking glow" B + D): a soft light behind the mic, purple while a person talks,
+     teal while the translation plays. JS sets --level (0–1, from the audio) and --glow (colour).
+     Only transform and opacity change per frame; the softness comes from the gradient, not a blur filter. */
+  .bloom { position: absolute; left: 50%; bottom: 88px; opacity: 0; transition: opacity 300ms ease-out; pointer-events: none; } /* 88px = mic centre */
+  .bloom i { position: absolute; left: -280px; top: -280px; width: 560px; height: 560px; border-radius: 50%;
+    background: radial-gradient(closest-side, var(--glow, transparent), transparent);
+    transform: scale(calc(.7 + var(--level, 0) * .8)); opacity: calc(.4 + var(--level, 0) * .6); }
+  .panel.speaking .bloom, .panel.playing .bloom { opacity: 1; }
+
+  /* Handoff (Figma J): a purple → teal band travels from the speaker toward the listener while translating,
+     then reaches across when the translated voice starts. */
+  .handoff { position: fixed; bottom: 43px; left: 25%; width: 50%; height: 90px; border-radius: 45px; pointer-events: none;
+    background: linear-gradient(90deg, #7c5cff, #14b8a6); filter: blur(28px);
+    opacity: 0; transform: scaleX(0); transform-origin: left; transition: transform 400ms cubic-bezier(.77, 0, .175, 1), opacity 400ms; }
+  .handoff.to-fr { transform-origin: right; background: linear-gradient(270deg, #7c5cff, #14b8a6); }
+  .handoff.travel { opacity: .55; transform: scaleX(.5); }
+  .handoff.arrive { opacity: 0; transform: scaleX(1); transition-duration: 500ms; }
   h2 { grid-row: 1; margin: 0; padding: 24px 24px 12px; font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: #888; }
   h2.en { text-align: right; }
 
@@ -38,6 +56,7 @@
   .mic[aria-pressed="true"], .mic.loading { background: #7c5cff; }
   .mic:disabled { opacity: .35; cursor: default; }
   .mic.loading:disabled { opacity: 1; }
+  .mic.playing { background: #14b8a6; }
   .dots { display: inline-flex; gap: 8px; }
   .dots i { width: 12px; height: 12px; border-radius: 50%; background: #fff; animation: pulse 900ms ease-in-out infinite; }
   .dots i:nth-child(2) { animation-delay: 150ms; }
@@ -78,6 +97,8 @@
   @media (prefers-reduced-motion: reduce) {
     .cap, dialog[open] { animation-name: fade; }
     .dots i, .bar { animation: none; opacity: .8; }
+    .bloom i { transform: none; opacity: .7; }  /* steady glow, no pulsing with the voice */
+    .handoff { display: none; }
   }
 </style>
 </head>
@@ -89,8 +110,8 @@
 </div>
 
 <main id="meeting">
-  <div class="panel fr"></div>
-  <div class="panel en"></div>
+  <div class="panel fr"><div class="bloom"><i></i></div></div>
+  <div class="panel en"><div class="bloom"><i></i></div></div>
   <h2 class="fr" lang="fr">Français</h2>
   <h2 class="en">English</h2>
   <div class="captions">
@@ -106,6 +127,7 @@
     <button class="mic" data-speaker="teacher" aria-pressed="false" aria-label="Tap to speak (teacher, English)"></button>
   </div>
 </main>
+<div class="handoff"></div>
 <button id="end" disabled>Terminer · End</button>
 
 <dialog id="confirm">
@@ -149,6 +171,7 @@ const mimeType = window.MediaRecorder && MediaRecorder.isTypeSupported('audio/we
   ? 'audio/webm;codecs=opus' : 'audio/mp4';
 let stream = null, recorder = null, chunks = [], startedAt = 0, active = null;
 let busy = false, blocked = false;
+let playing = null, skipPlayback = null; // who is hearing the translation right now; tap their button to skip
 
 const $ = s => document.querySelector(s);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -157,7 +180,54 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const svg = body => `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const MIC_ICON = svg('<path d="M25 8.33C25 5.57 22.76 3.33 20 3.33S15 5.57 15 8.33V18.33C15 21.09 17.24 23.33 20 23.33S25 21.09 25 18.33V8.33Z"/><path d="M31.67 16.67V20C31.67 23.09 30.44 26.06 28.25 28.25 26.06 30.44 23.09 31.67 20 31.67S13.94 30.44 11.75 28.25C9.56 26.06 8.33 23.09 8.33 20V16.67M20 31.67V36.67M13.33 36.67H26.67"/>');
 const STOP_ICON = svg('<rect x="12" y="12" width="16" height="16" rx="3" fill="currentColor"/>');
+const SPEAKER_ICON = svg('<path d="M4 14H10L18 7V33L10 26H4Z"/><path d="M24 14C27 17 27 23 24 26M28 9C34 15 34 25 28 31"/>');
 document.querySelectorAll('.mic').forEach(b => b.innerHTML = MIC_ICON);
+
+// --- Glow: one panel at a time follows an audio level ---
+const PURPLE = '#7c5cff73', TEAL = '#14b8a673'; // purple = a person talking, teal = ParentBridge talking
+let audioCtx = null, micAnalyser = null;
+let glowPanel = null, readLevel = null, level = 0;
+
+function ensureAudio() { // must first run inside a tap (browsers block audio until a user gesture)
+  audioCtx ??= new AudioContext();
+  audioCtx.resume();
+  return audioCtx;
+}
+function analyserFor(sourceNode) {
+  const a = audioCtx.createAnalyser();
+  a.fftSize = 512;
+  sourceNode.connect(a);
+  return a;
+}
+function loudness(analyser) { // RMS of the waveform, roughly 0–0.3 for speech
+  const buf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  let sum = 0;
+  for (const v of buf) sum += ((v - 128) / 128) ** 2;
+  return Math.sqrt(sum / buf.length);
+}
+function glow(panel = null, reader = null, color = PURPLE) {
+  glowPanel = panel;
+  readLevel = reader;
+  level = 0;
+  panel?.style.setProperty('--glow', color);
+}
+// Every frame: rise fast with the voice, fall slowly, so it swells with syllables instead of flickering.
+(function tick() {
+  const target = readLevel ? Math.min(1, readLevel() * 5) : 0;
+  level += (target - level) * (target > level ? 0.5 : 0.12);
+  glowPanel?.style.setProperty('--level', level.toFixed(3));
+  requestAnimationFrame(tick);
+})();
+const fakeVoice = () => 0.08 + 0.06 * Math.sin(performance.now() / 90); // mock mode / browser voice: no real signal
+
+// Handoff band: 'travel' while translating, 'arrive' when the voice starts, 'done' to clear.
+function handoff(speaker, stage) {
+  const h = $('.handoff');
+  h.classList.toggle('to-fr', speaker === 'teacher');
+  h.classList.toggle('travel', stage === 'travel');
+  h.classList.toggle('arrive', stage === 'arrive');
+}
 
 function setStatus(lang, text, isError = false) {
   const el = $(`.controls.${lang} .status`);
@@ -166,10 +236,10 @@ function setStatus(lang, text, isError = false) {
 }
 
 // One place decides what's clickable: mics lock while busy, blocked, or the other side is talking;
-// End also waits for the first turn (nothing to summarize before that).
+// the listener's button stays live during playback (tap = skip). End also waits for the first turn.
 function updateButtons() {
   document.querySelectorAll('.mic').forEach(b =>
-    b.disabled = busy || blocked || (active !== null && b.dataset.speaker !== active));
+    b.disabled = (busy && b.dataset.speaker !== playing) || blocked || (active !== null && b.dataset.speaker !== active));
   $('#end').disabled = busy || active !== null || !transcript.length;
 }
 
@@ -197,11 +267,15 @@ function setRecording(speaker, on) {
   btn.innerHTML = on ? STOP_ICON : MIC_ICON;
   updateButtons();
   setStatus(lang, on ? (lang === 'fr' ? 'Écoute en cours… touchez pour arrêter' : 'Listening… tap to stop') : '');
+  if (on) glow($(`.panel.${lang}`), micAnalyser ? () => loudness(micAnalyser) : fakeVoice, PURPLE);
+  else glow();
 }
 
 function start(speaker) {
   const lang = LANG[speaker];
   if (!stream && !MOCK) return setStatus(lang, lang === 'fr' ? 'Micro non disponible' : 'Microphone not available', true);
+  ensureAudio();
+  if (stream && !micAnalyser) micAnalyser = analyserFor(audioCtx.createMediaStreamSource(stream)); // not sent to speakers
   active = speaker;
   startedAt = performance.now();
   setRecording(speaker, true);
@@ -227,7 +301,8 @@ function stop() {
 }
 
 document.querySelectorAll('.mic').forEach(btn => btn.onclick = () => {
-  if (active === btn.dataset.speaker) stop();
+  if (playing === btn.dataset.speaker) skipPlayback?.();
+  else if (active === btn.dataset.speaker) stop();
   else if (!active) start(btn.dataset.speaker);
 });
 
@@ -264,14 +339,15 @@ async function sendTurn(blob, speaker) {
   const lang = LANG[speaker];
   setBusy(true);
   setTranslating(speaker, true);
+  handoff(speaker, 'travel');
   try {
     const { audio_b64, ...turn } = MOCK ? await mockTurn(speaker) : await postTurn(blob, speaker);
     transcript.push(turn);
     setTranslating(speaker, false);
     renderTurn(turn); // caption first, then audio
-    if (audio_b64) new Audio('data:audio/mpeg;base64,' + audio_b64).play().catch(() => {});
-    else speak(turn.target_text, turn.target_lang);
+    await playTranslation(turn, audio_b64); // mics stay locked until the voice finishes (or is skipped)
   } catch (e) {
+    handoff(speaker, 'done');
     setTranslating(speaker, false);
     setStatus(lang, e.message === 'No speech detected' ? NO_SPEECH[lang] : e.message, true);
   } finally {
@@ -279,13 +355,55 @@ async function sendTurn(blob, speaker) {
   }
 }
 
-// TEMP: browser Web Speech TTS when a turn has no audio (mock mode). Remove once ElevenLabs audio comes back.
-function speak(text, lang) {
-  if (!window.speechSynthesis) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = lang === 'fr' ? 'fr-FR' : 'en-US';
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
+// Playback (Figma D): the listener's side glows teal and their button becomes a speaker; tap it to skip.
+function setPlaying(listener, on) {
+  const lang = LANG[listener];
+  const btn = $(`.mic[data-speaker="${listener}"]`);
+  btn.classList.toggle('playing', on);
+  btn.innerHTML = on ? SPEAKER_ICON : MIC_ICON;
+  $(`.panel.${lang}`).classList.toggle('playing', on);
+  setStatus(lang, on ? (lang === 'fr' ? 'Lecture de la traduction… touchez pour passer' : 'Playing translation… tap to skip') : '');
+  playing = on ? listener : null;
+  updateButtons();
+}
+
+function playTranslation(turn, audio_b64) {
+  const listener = turn.speaker === 'parent' ? 'teacher' : 'parent';
+  const panel = $(`.panel.${LANG[listener]}`);
+  return new Promise(resolve => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      skipPlayback = null;
+      handoff(turn.speaker, 'done');
+      glow();
+      setPlaying(listener, false);
+      resolve();
+    };
+    // The band reaches the listener on the same frame the voice starts (not after a fixed delay).
+    const started = reader => { handoff(turn.speaker, 'arrive'); setPlaying(listener, true); glow(panel, reader, TEAL); };
+
+    if (audio_b64) {
+      const audio = new Audio('data:audio/mpeg;base64,' + audio_b64);
+      const analyser = analyserFor(ensureAudio().createMediaElementSource(audio));
+      analyser.connect(audioCtx.destination); // the analyser sits between the audio and the speakers
+      audio.onplaying = () => started(() => loudness(analyser) * 0.4); // TTS is mastered much louder than a mic
+      audio.onended = audio.onerror = finish;
+      skipPlayback = () => { audio.pause(); finish(); };
+      audio.play().catch(finish);
+    } else if (window.speechSynthesis) {
+      // TEMP: browser voice when a turn has no audio (mock mode). Remove once ElevenLabs audio is the only path.
+      const u = new SpeechSynthesisUtterance(turn.target_text);
+      u.lang = turn.target_lang === 'fr' ? 'fr-FR' : 'en-US';
+      u.onstart = () => started(fakeVoice);
+      u.onend = u.onerror = finish;
+      setTimeout(() => { if (!playing) finish(); }, 2000); // some browsers never fire onstart (no voices)
+      skipPlayback = () => { speechSynthesis.cancel(); finish(); };
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } else finish();
+  });
 }
 
 // One row per turn: French cell then English cell, so the grid keeps them aligned.
