@@ -78,15 +78,46 @@
   dialog button { padding: 12px 20px; border: 1px solid #dce0e7; border-radius: 10px; background: #fff; font: 500 16px system-ui, sans-serif; cursor: pointer; }
   dialog button.primary { border-color: #7c5cff; background: #7c5cff; color: #fff; }
 
+  /* Login */
+  #login { min-height: 100%; display: grid; place-items: center; padding: 24px; }
+  .card { width: min(440px, 100%); padding: 40px; background: #fff; border-radius: 24px; }
+  .card h1 { margin: 0; font-size: 32px; }
+  .card .sub { margin: 4px 0 24px; font-size: 17px; color: #596171; }
+  label { display: block; margin: 16px 0 6px; font-size: 15px; font-weight: 600; color: #596171; }
+  input { width: 100%; padding: 12px 14px; border: 1px solid #dce0e7; border-radius: 10px; font: 18px system-ui, sans-serif; }
+  input:focus-visible { outline: 3px solid #7c5cff55; border-color: #7c5cff; }
+  .btn { padding: 12px 24px; border: 1px solid #dce0e7; border-radius: 999px; background: #fff; color: #1a1a1a; font: 500 18px system-ui, sans-serif; cursor: pointer; transition: transform 140ms ease-out; }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { border-color: #7c5cff; background: #7c5cff; color: #fff; }
+  .btn:disabled { opacity: .35; cursor: default; transform: none; }
+  #login .btn { width: 100%; margin-top: 24px; }
+  .form-error { min-height: 1.4em; margin: 12px 0 0; font-size: 16px; color: #b42318; }
+  .guest { display: block; margin-top: 16px; text-align: center; font-size: 16px; color: #596171; }
+
+  /* Dashboard */
+  #dashboard { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  .dash-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .dash-head h1 { margin: 0; font-size: 32px; }
+  .dash-actions { display: flex; gap: 12px; }
+  #dashboard h2 { margin: 40px 0 12px; padding: 0; }
+  #meetings { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+  #meetings .muted { color: #888; font-size: 18px; }
+  .meeting-card { width: 100%; padding: 20px 24px; border: 0; border-radius: 20px; background: #fff; color: #1a1a1a; text-align: left; font: inherit; cursor: pointer; transition: transform 140ms ease-out; }
+  .meeting-card:active { transform: scale(.98); }
+  .meeting-card strong { display: block; font-size: 20px; }
+  .meeting-card time, .meeting-card .count { font-size: 15px; color: #596171; }
+  .meeting-card p { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 8px 0; font-size: 17px; color: #555; }
+
   /* Summary */
   #summary { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  #sum-saved { margin: -16px 0 24px; font-size: 16px; color: #596171; }
+  #sum-saved.error { color: #b42318; }
+  .sum-actions { display: flex; gap: 12px; }
   #sum-title { margin: 0 0 24px; font-size: 28px; }
   #summary .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
   #summary h2 { padding: 0; }
   table { width: 100%; border-collapse: collapse; margin: 32px 0; background: #fff; }
   th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-  #new { padding: 12px 24px; border: 0; border-radius: 999px; background: #1a1a1a; color: #fff; font-size: 18px; cursor: pointer; }
-  #new:disabled { opacity: .35; cursor: default; }
   .bar { display: block; height: 18px; margin: 10px 0; border-radius: 9px; background: #dfe2e8; animation: pulse 1.2s ease-in-out infinite; }
   .bar:nth-child(4) { width: 60%; }
 
@@ -109,7 +140,33 @@
   Microphone blocked: allow mic access in your browser settings, then reload the page.
 </div>
 
-<main id="meeting">
+<section id="login" hidden>
+  <form class="card" id="login-form">
+    <h1>ParentBridge</h1>
+    <p class="sub"><span lang="fr">Espace enseignant</span> · Teacher sign-in</p>
+    <label for="email"><span lang="fr">Courriel</span> · Email</label>
+    <input id="email" type="email" autocomplete="username" required>
+    <label for="password"><span lang="fr">Mot de passe</span> · Password</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button class="btn primary" type="submit"><span lang="fr">Se connecter</span> · Sign in</button>
+    <p class="form-error" role="alert"></p>
+    <a class="guest" href="#meeting" id="guest"><span lang="fr">Continuer sans compte</span> · Continue without an account</a>
+  </form>
+</section>
+
+<section id="dashboard" hidden>
+  <div class="dash-head">
+    <h1 id="hello"></h1>
+    <div class="dash-actions">
+      <button class="btn" id="logout"><span lang="fr">Déconnexion</span> · Sign out</button>
+      <button class="btn primary" id="start"><span lang="fr">Nouvelle rencontre</span> · New meeting</button>
+    </div>
+  </div>
+  <h2><span lang="fr">Rencontres récentes</span> · Recent meetings</h2>
+  <ul id="meetings"></ul>
+</section>
+
+<main id="meeting" hidden>
   <div class="panel fr"><div class="bloom"><i></i></div></div>
   <div class="panel en"><div class="bloom"><i></i></div></div>
   <h2 class="fr" lang="fr">Français</h2>
@@ -128,7 +185,7 @@
   </div>
 </main>
 <div class="handoff"></div>
-<button id="end" disabled>Terminer · End</button>
+<button id="end" disabled hidden>Terminer · End</button>
 
 <dialog id="confirm">
   <form method="dialog">
@@ -145,6 +202,7 @@
 
 <section id="summary" hidden>
   <h1 id="sum-title"></h1>
+  <p id="sum-saved"></p>
   <div class="cols">
     <div lang="en"><h2>Summary</h2><p id="sum-en"></p></div>
     <div lang="fr"><h2>Résumé</h2><p id="sum-fr"></p></div>
@@ -153,7 +211,10 @@
     <thead><tr><th>Owner</th><th>Task EN</th><th>Tâche FR</th><th>Due</th></tr></thead>
     <tbody id="items"></tbody>
   </table>
-  <button id="new">New meeting</button>
+  <div class="sum-actions">
+    <button class="btn" id="to-dash" hidden>← <span lang="fr">Tableau de bord</span> · Dashboard</button>
+    <button class="btn primary" id="new"><span lang="fr">Nouvelle rencontre</span> · New meeting</button>
+  </div>
 </section>
 
 <script>
@@ -245,17 +306,20 @@ function updateButtons() {
 
 function setBusy(b) { busy = b; updateButtons(); }
 
-// Ask for the mic once, on page load. mediaDevices is missing entirely on plain HTTP.
-(navigator.mediaDevices ? navigator.mediaDevices.getUserMedia({ audio: true }) : Promise.reject())
-  .then(s => stream = s)
-  .catch(() => {
-    if (MOCK) return;
-    blocked = true;
-    $('#banner').hidden = false;
-    $('.hint[lang="fr"] span').textContent = 'Micro non disponible';
-    $('.hint[lang="en"] span').textContent = 'Microphone unavailable';
-    updateButtons();
-  });
+// Ask for the mic once, when the meeting screen opens (not on the login page).
+// mediaDevices is missing entirely on plain HTTP.
+function initMic() {
+  (navigator.mediaDevices ? navigator.mediaDevices.getUserMedia({ audio: true }) : Promise.reject())
+    .then(s => stream = s)
+    .catch(() => {
+      if (MOCK) return;
+      blocked = true;
+      $('#banner').hidden = false;
+      $('.hint[lang="fr"] span').textContent = 'Micro non disponible';
+      $('.hint[lang="en"] span').textContent = 'Microphone unavailable';
+      updateButtons();
+    });
+}
 
 // --- Recording (tap to start, tap again to stop) ---
 
@@ -311,7 +375,7 @@ document.querySelectorAll('.mic').forEach(btn => btn.onclick = () => {
 async function request(url, options) {
   const res = await fetch(url, options);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `Server error (${res.status})`), { status: res.status });
   return data;
 }
 
@@ -438,43 +502,162 @@ $('#end').onclick = () => { confirmDialog.returnValue = ''; confirmDialog.showMo
 confirmDialog.onclick = e => { if (e.target === confirmDialog) confirmDialog.close(); }; // click on the backdrop = cancel
 confirmDialog.onclose = () => { if (confirmDialog.returnValue === 'end') endMeeting(); };
 
-function showSummaryScreen(on) {
-  $('#meeting').hidden = on;
-  $('#end').hidden = on;
-  $('#summary').hidden = !on;
+function renderSummary(s) {
+  $('#sum-en').textContent = s.summary_en;
+  $('#sum-fr').textContent = s.summary_fr;
+  $('#items').innerHTML = '';
+  for (const item of s.action_items) {
+    const row = $('#items').insertRow();
+    for (const key of ['owner', 'task_en', 'task_fr', 'due']) row.insertCell().textContent = item[key];
+  }
 }
 
 async function endMeeting() {
   setBusy(true);
-  showSummaryScreen(true);
+  show('#summary');
   $('#sum-title').textContent = 'Préparation du résumé… · Preparing summary…';
+  $('#sum-saved').textContent = '';
+  $('#sum-saved').classList.remove('error');
   $('#new').disabled = true;
+  $('#to-dash').hidden = !teacher;
   for (const id of ['#sum-en', '#sum-fr']) $(id).innerHTML = '<span class="bar"></span>'.repeat(4);
   $('#items').innerHTML = '<tr><td colspan="4"><span class="bar"></span></td></tr>'.repeat(3);
+  let s;
   try {
-    const s = MOCK ? (await sleep(1500), MOCK_SUMMARY) : await request('/api/summary', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transcript }),
-    });
-    $('#sum-title').textContent = 'Résumé · Summary';
-    $('#sum-en').textContent = s.summary_en;
-    $('#sum-fr').textContent = s.summary_fr;
-    $('#items').innerHTML = '';
-    for (const item of s.action_items) {
-      const row = $('#items').insertRow();
-      for (const key of ['owner', 'task_en', 'task_fr', 'due']) row.insertCell().textContent = item[key];
-    }
-    stream?.getTracks().forEach(t => t.stop());
-    $('#new').disabled = false;
+    s = MOCK ? (await sleep(1500), MOCK_SUMMARY) : await request('/api/summary', jsonPost({ transcript }));
   } catch (e) {
     // Back to the meeting with everything intact, so they can just press End again.
-    showSummaryScreen(false);
+    show('#meeting');
     setStatus('en', e.message, true);
     setBusy(false);
+    return;
+  }
+  $('#sum-title').textContent = 'Résumé · Summary';
+  renderSummary(s);
+  stream?.getTracks().forEach(t => t.stop());
+  $('#new').disabled = false;
+  if (!teacher) return; // guest meeting: nothing to save
+  $('#sum-saved').textContent = 'Enregistrement… · Saving…';
+  try {
+    await api.saveMeeting({ student: STUDENT, ...s });
+    $('#sum-saved').textContent = 'Enregistré dans le tableau de bord · Saved to your dashboard';
+  } catch (e) {
+    $('#sum-saved').textContent = 'Non enregistré · Not saved: ' + e.message;
+    $('#sum-saved').classList.add('error');
   }
 }
-$('#new').onclick = () => location.reload();
+// A fresh page load resets the meeting (transcript, mic, mock lines), so navigation between meetings reloads.
+const goTo = hash => { location.hash = hash; location.reload(); };
+$('#new').onclick = () => goTo('meeting');
+$('#to-dash').onclick = () => goTo('dashboard');
+
+// --- Screens, login and dashboard ---
+
+const STUDENT = 'Léo Martin'; // synthetic demo student
+let teacher = null;            // { name } when a teacher is signed in
+
+function show(id) {
+  for (const s of ['#login', '#dashboard', '#meeting', '#summary']) $(s).hidden = s !== id;
+  $('#end').hidden = id !== '#meeting';
+}
+
+const jsonPost = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const api = {
+  me: () => request('/api/me'),
+  login: (email, password) => request('/api/login', jsonPost({ email, password })),
+  logout: () => request('/api/logout', { method: 'POST' }),
+  meetings: () => request('/api/meetings'),
+  saveMeeting: m => request('/api/meetings', jsonPost(m)),
+};
+
+function startMeeting() {
+  show('#meeting');
+  initMic();
+  updateButtons();
+}
+
+const dateFormat = new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium', timeStyle: 'short' });
+
+async function showDashboard() {
+  show('#dashboard');
+  $('#hello').textContent = `Bonjour · Hello, ${teacher.name}`;
+  const list = $('#meetings');
+  list.innerHTML = '<li class="muted">Chargement… · Loading…</li>';
+  let meetings;
+  try {
+    meetings = await api.meetings();
+  } catch (e) {
+    if (e.status === 401) return show('#login');
+    list.innerHTML = '';
+    list.append(Object.assign(document.createElement('li'), { className: 'muted', textContent: e.message }));
+    return;
+  }
+  list.innerHTML = meetings.length ? '' : '<li class="muted">Aucune rencontre pour l’instant · No meetings yet</li>';
+  for (const m of meetings) {
+    const card = document.createElement('button');
+    card.className = 'meeting-card';
+    const name = document.createElement('strong');
+    name.textContent = m.student;
+    const when = document.createElement('time');
+    when.dateTime = m.created_at;
+    when.textContent = dateFormat.format(new Date(m.created_at));
+    const preview = document.createElement('p');
+    preview.textContent = m.summary_en;
+    const count = document.createElement('span');
+    count.className = 'count';
+    const n = m.action_items.length;
+    count.textContent = `${n} ${n === 1 ? 'action' : 'actions'}`;
+    card.append(name, when, preview, count);
+    card.onclick = () => openMeeting(m);
+    const li = document.createElement('li');
+    li.append(card);
+    list.append(li);
+  }
+}
+
+function openMeeting(m) { // a past meeting, read-only
+  show('#summary');
+  $('#sum-title').textContent = `${m.student} · ${dateFormat.format(new Date(m.created_at))}`;
+  $('#sum-saved').textContent = '';
+  $('#to-dash').hidden = false;
+  $('#new').disabled = false;
+  renderSummary(m);
+}
+
+$('#login-form').onsubmit = async e => {
+  e.preventDefault();
+  const button = $('#login-form button');
+  button.disabled = true;
+  $('.form-error').textContent = '';
+  try {
+    teacher = await api.login($('#email').value, $('#password').value);
+    location.hash = 'dashboard';
+    showDashboard();
+  } catch (err) {
+    $('.form-error').textContent = err.status === 401
+      ? 'Courriel ou mot de passe incorrect · Wrong email or password'
+      : [404, 405].includes(err.status) ? 'Connexion pas encore disponible · Sign-in isn’t available yet. Continue without an account below.' // no /api/login on this backend yet
+      : err.message;
+  } finally {
+    button.disabled = false;
+  }
+};
+$('#guest').onclick = () => startMeeting();
+$('#start').onclick = () => { location.hash = 'meeting'; startMeeting(); };
+$('#logout').onclick = async () => {
+  await api.logout().catch(() => {});
+  teacher = null;
+  location.hash = '';
+  show('#login');
+};
+
+// On load: find out who is signed in, then open the screen the URL asks for. Called at the end of the script.
+async function route() {
+  teacher = await api.me().catch(() => null); // 401 (or no backend yet) = not signed in
+  if (location.hash === '#meeting') startMeeting();
+  else if (teacher) showDashboard();
+  else show('#login');
+}
 
 // --- Mock mode (?mock=1): demo-script responses, no backend ---
 
@@ -513,6 +696,40 @@ const MOCK_SUMMARY = {
     { owner: 'Parent', task_en: 'Sign the consent form', task_fr: 'Signer le formulaire de consentement', due: 'Friday' },
   ],
 };
+
+// Mock login + meetings, kept in this browser's localStorage. Mock password: "demo".
+const local = {
+  get: (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
+  set: (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
+};
+const authError = message => Object.assign(new Error(message), { status: 401 });
+const MOCK_API = {
+  async me() {
+    const name = local.get('pb-mock-teacher', null);
+    if (!name) throw authError('Not logged in');
+    return { name };
+  },
+  async login(email, password) {
+    await sleep(400);
+    if (password !== 'demo') throw authError('Wrong email or password');
+    local.set('pb-mock-teacher', 'Ms. Tremblay');
+    return { name: 'Ms. Tremblay' };
+  },
+  async logout() { local.set('pb-mock-teacher', null); return {}; },
+  async meetings() { // seeded with one past meeting so the dashboard isn't empty on first look
+    await sleep(300);
+    const lastWeek = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    return local.get('pb-mock-meetings', [{ id: 1, created_at: lastWeek, student: STUDENT, ...MOCK_SUMMARY }]);
+  },
+  async saveMeeting(m) {
+    const saved = { id: Date.now(), created_at: new Date().toISOString(), ...m };
+    local.set('pb-mock-meetings', [saved, ...await MOCK_API.meetings()]);
+    return { id: saved.id, created_at: saved.created_at };
+  },
+};
+if (MOCK) Object.assign(api, MOCK_API);
+
+route();
 </script>
 </body>
 </html>

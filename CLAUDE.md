@@ -37,12 +37,20 @@ Timebox: 2–3 hours. If it isn't working end to end on the live link by then, s
 - The meeting itself (`/api/turn`, `/api/summary`) still works without logging in.
 - Split: Evan builds the database, endpoints and seed script; Sai builds the login page, dashboard and the save-after-summary call, using mock data until the endpoints are live.
 
-**Out of scope for now. Don't build these unless asked:** video calling (paused), SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning, React.
+**Out of scope for now. Don't build these unless asked:** video calling (paused), SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning.
+
+## React app (`web/`, Sun): exploration, not deployed
+A Vite + React version of the frontend with separate pages. `frontend/index.html` is still the deployed app and the demo fallback; `web/` does not change what Render serves.
+- Pages (HashRouter, so URLs look like `/#/dashboard` and FastAPI can keep serving plain static files): `/login`, `/dashboard`, `/meeting`, `/summary`, `/meetings/:id`. Same API contract as above; `?mock=1` fakes everything (mock password `demo`).
+- Same design language as `frontend/index.html`, plus: a smoother handoff (one light travels from the speaker's mic to the listener's and lands when the ElevenLabs audio starts), and a **face-to-face layout** on portrait phones/tablets (English half rotated 180° for the teacher across the table, French half for the parent).
+- Run: `cd web && npm install && npx vite` → http://localhost:5173. Vite forwards `/api` to uvicorn on :8000, so run the backend too for real turns.
+- To deploy it later: build (`npx vite build`) and have FastAPI serve `web/dist` instead of `frontend/` (a backend change), plus Node in the Render build. Agree this together before switching.
 
 ## Stack
 - Backend: Python 3.11+, FastAPI, uvicorn, python-multipart, python-dotenv, `elevenlabs` SDK, `anthropic` SDK. (Switched from OpenAI on Sat: no sponsor OpenAI credits.)
 - Phase 2 adds: `psycopg[binary]` (Postgres driver), and Starlette's `SessionMiddleware` for a signed session cookie (requires `itsdangerous`). Passwords are hashed with the standard library (`hashlib.scrypt` + a random salt); no auth library.
 - Frontend: a single `frontend/index.html` with plain JS and inline CSS. Recording uses `MediaRecorder`; the speaking glow uses the Web Audio API.
+- React app (`web/`, not deployed): React 19, React Router 7, Vite 8. Dependencies are in `web/package.json`; `web/node_modules/` and `web/dist/` are gitignored.
 - FastAPI serves `frontend/` as static files at `/`. One server, one origin, no CORS setup.
 - The frontend holds the live transcript in memory and sends history with each request. Postgres stores only finished meeting summaries (Phase 2).
 - Deploy: Render (web service; start command `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`).
@@ -56,7 +64,12 @@ backend/
   glossary.json    # EN -> FR education terms
   requirements.txt
 frontend/
-  index.html
+  index.html          # deployed app (plain JS)
+web/                  # React version (Vite), not deployed yet
+  src/api.js          # real + mock API (same contract)
+  src/audio.js        # Web Audio + speaking glow loop
+  src/pages/          # Login, Dashboard, Meeting, Summary, PastMeeting
+  src/styles.css
 scripts/
   test_roundtrip.py   # CLI: audio file -> STT -> translate -> TTS -> out.mp3
   seed_teacher.py     # Phase 2: creates the tables + the demo teacher from env vars
