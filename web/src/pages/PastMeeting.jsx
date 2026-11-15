@@ -9,7 +9,7 @@ import SummaryView from '../components/SummaryView.jsx';
 export default function PastMeeting() {
   const { id } = useParams();
   const { state } = useLocation();
-  const { setTeacher } = useAuth();
+  const { setUser } = useAuth();
   const [meeting, setMeeting] = useState(state?.meeting ?? null);
   const [error, setError] = useState('');
 
@@ -21,9 +21,9 @@ export default function PastMeeting() {
         if (found) setMeeting(found);
         else setError('Rencontre introuvable · Meeting not found');
       },
-      e => (e.status === 401 ? setTeacher(null) : setError(e.message)),
+      e => (e.status === 401 ? setUser(null) : setError(e.message)),
     );
-  }, [id, meeting, setTeacher]);
+  }, [id, meeting, setUser]);
 
   const title = meeting
     ? `${meeting.student} · ${dateFormat.format(new Date(meeting.created_at))}`

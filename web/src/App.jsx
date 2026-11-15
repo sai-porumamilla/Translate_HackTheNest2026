@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { AuthProvider, RequireTeacher, useAuth } from './auth.jsx';
+import { AuthProvider, RequireSignIn, useAuth } from './auth.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Meeting from './pages/Meeting.jsx';
@@ -13,10 +13,10 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<RequireTeacher><Dashboard /></RequireTeacher>} />
+        <Route path="/dashboard" element={<RequireSignIn><Dashboard /></RequireSignIn>} />
         <Route path="/meeting" element={<Meeting />} />
         <Route path="/summary" element={<Summary />} />
-        <Route path="/meetings/:id" element={<RequireTeacher><PastMeeting /></RequireTeacher>} />
+        <Route path="/meetings/:id" element={<RequireSignIn><PastMeeting /></RequireSignIn>} />
         <Route path="*" element={<Home />} />
       </Routes>
     </AuthProvider>
@@ -24,6 +24,6 @@ export default function App() {
 }
 
 function Home() {
-  const { teacher } = useAuth();
-  return <Navigate to={teacher ? '/dashboard' : '/login'} replace />;
+  const { user } = useAuth();
+  return <Navigate to={user ? '/dashboard' : '/login'} replace />;
 }

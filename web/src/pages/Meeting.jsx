@@ -16,7 +16,8 @@ const STATUS = {
   playing: { fr: 'Lecture de la traduction… touchez pour passer', en: 'Playing translation… tap to skip' },
   noSpeech: { fr: 'Aucune parole détectée · Réessayez', en: 'No speech detected · Try again' },
 };
-const PURPLE = '#7c5cff73', TEAL = '#14b8a673'; // purple = a person talking, teal = ParentBridge talking
+// Glow colours come from the theme tokens in styles.css: --voice = a person talking, --interp = ParentBridge talking
+const PURPLE = 'var(--glow-voice)', TEAL = 'var(--glow-interp)';
 // Portrait phones and tablets: face-to-face layout (device lies flat between parent and teacher).
 const FACE_TO_FACE = '(orientation: portrait) and (max-width: 1024px)';
 
