@@ -194,6 +194,25 @@ Current Claude models reject `temperature`, so leave it out; faithfulness comes 
 - A clean, legible look with large text for a demo table. No framework.
 - Phase 2: a login page (bilingual error message), the dashboard, a logout button, and redirect to login when `/api/me` returns 401. After a summary arrives, the meeting is saved with `POST /api/meetings` when a teacher is logged in.
 
+## Backend requirements (Evan)
+Done: `/api/turn`, `/api/summary`, startup warm-up, per-stage timing logs, glossary seed.
+
+**Tonight, in this order (ship first, then Phase 2):**
+- [ ] **Render deploy.** Evan takes it tonight so Sai can stay on the frontend. New Web Service from `main`. Build: `pip install -r backend/requirements.txt`. Start: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`. Health check: `/api/health`. Env vars: the 4 keys from `.env` plus `PYTHON_VERSION=3.11.16`, set in Render's dashboard only. Free tier sleeps after 15 min idle (about 1 min to wake), so open the link a few minutes before judging.
+- [ ] **iPad and phone test on the HTTPS link.** Safari records `audio/mp4`, which is untested with Scribe. If it fails, fix it in the backend (for example, pass a filename/content type Scribe accepts). This is the riskiest open item.
+- [ ] **Summary prompt uses the glossary**, so French terms match the translations (the summary said "plan d'enseignement individualisé" while the glossary says "plan d'éducation individualisé").
+- [ ] **Glossary to about 20 terms**, plus French QA on the demo script.
+- [ ] **README:** setup, architecture diagram in text, how to run.
+- [ ] **Devpost draft by 11:45 PM:** paste the write-up, make the repo public, add both teammates, list tracks and AI tools used.
+
+**Phase 2 (2–3 h timebox):**
+- [ ] Render free Postgres; tables `teachers` and `meetings` as in the API contract.
+- [ ] `/api/login`, `/api/logout`, `/api/me`, `GET`/`POST /api/meetings`, exactly as in the API contract. Every route except login returns 401 without a session.
+- [ ] Passwords: `hashlib.scrypt` with a random salt per teacher. Session: Starlette `SessionMiddleware` signed with `SESSION_SECRET`.
+- [ ] `scripts/seed_teacher.py`: creates the tables and the demo teacher from `DEMO_TEACHER_EMAIL` / `DEMO_TEACHER_PASSWORD`.
+- [ ] Add the new variable names (no values) to `.env.example`; set the values in Render.
+- [ ] The frontend is already built against this contract (`?mock=1` fakes it). When the endpoints work locally, tell Sai so the two can be tested together.
+
 ## Build order and checkpoints
 1. Scaffold the repo, `.gitignore`, `.env.example`, a FastAPI hello world, and the static mount. Commit.
 2. `scripts/test_roundtrip.py <audio_file> fr` writes `out.mp3` and prints the source text and translation. **This is the riskiest piece; get it working first.**
