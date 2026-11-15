@@ -2,7 +2,7 @@
 
 ## What we're building
 A live two-way voice interpreter for parent–teacher meetings. Demo pair: French-speaking parent ↔ English-speaking teacher.
-Pipeline per turn: push-to-talk recording → ElevenLabs speech-to-text → OpenAI translation (with an education glossary + recent context) → ElevenLabs text-to-speech in the other language → captions in both languages. At the end of the meeting: a bilingual summary with action items.
+Pipeline per turn: push-to-talk recording → ElevenLabs speech-to-text → Claude (Anthropic API) translation (with an education glossary + recent context) → ElevenLabs text-to-speech in the other language → captions in both languages. At the end of the meeting: a bilingual summary with action items.
 
 Team: two people. Sai (frontend: UI, recorder, captions, summary screen, deploy) and Evan (backend, prompts, glossary, French QA). Both must be able to explain all the code to judges, so keep it simple and readable. No clever abstractions.
 
@@ -21,7 +21,7 @@ Team: two people. Sai (frontend: UI, recorder, captions, summary screen, deploy)
 ## Scope: MVP only (features 1–6)
 1. Two push-to-talk buttons: "Parent speaks (FR)" and "Teacher speaks (EN)". Hold to record, release to send. The button decides the language; there is no language detection or speaker diarization.
 2. Speech-to-text with ElevenLabs (Scribe), with `language_code` forced from the button.
-3. Translation with OpenAI, using `glossary.json` plus the last 6 turns as context.
+3. Translation with Claude (Anthropic API), using `glossary.json` plus the last 6 turns as context.
 4. Text-to-speech with ElevenLabs Flash (multilingual, low latency). Use one voice for French output and a different voice for English output.
 5. Live captions in two columns (EN / FR): speaker, original text, translation.
 6. "End meeting" → `/api/summary` → a bilingual summary + an action-item table.
@@ -29,7 +29,7 @@ Team: two people. Sai (frontend: UI, recorder, captions, summary screen, deploy)
 **Out of scope for now. Don't build these unless asked:** critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning, a database, auth, React.
 
 ## Stack
-- Backend: Python 3.11+, FastAPI, uvicorn, python-multipart, python-dotenv, `elevenlabs` SDK, `openai` SDK.
+- Backend: Python 3.11+, FastAPI, uvicorn, python-multipart, python-dotenv, `elevenlabs` SDK, `anthropic` SDK. (Switched from OpenAI on Sat: no sponsor OpenAI credits.)
 - Frontend: a single `frontend/index.html` with plain JS and inline CSS. Recording uses `MediaRecorder`.
 - FastAPI serves `frontend/` as static files at `/`. One server, one origin, no CORS setup.
 - No database. The frontend holds the transcript in memory and sends history with each request.
@@ -55,11 +55,12 @@ README.md
 ## Environment variables
 ```
 ELEVENLABS_API_KEY=
-OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
 EXA_API_KEY=            # not used in the MVP
 VOICE_ID_FR=            # voice the parent hears
 VOICE_ID_EN=            # voice the teacher hears
-OPENAI_MODEL=           # a fast chat model; check the current name in the OpenAI docs
+TRANSLATE_MODEL=        # optional; defaults to claude-haiku-5-5 (fastest, thinking off)
+SUMMARY_MODEL=          # optional; defaults to claude-sonnet-5-5
 ```
 
 ## API contract (do not change without telling both teammates)
@@ -98,7 +99,7 @@ Response 200:
   ]
 }
 ```
-Use OpenAI JSON / structured output mode. Validate the result with a Pydantic model.
+Use Claude structured outputs (`output_config.format` with a JSON schema). Validate the result with a Pydantic model.
 
 ## Reference code (speech.py)
 Confirm the current model IDs in the ElevenLabs docs before relying on these.
@@ -133,7 +134,7 @@ Recent conversation for context: {history}
 Latest message: {text}
 Return only the translation.
 ```
-Use low temperature (0–0.3). Only pass glossary entries relevant to the direction; the whole file is small, so passing all of it is fine.
+Current Claude models reject `temperature`, so leave it out; faithfulness comes from the prompt. Only pass glossary entries relevant to the direction; the whole file is small, so passing all of it is fine.
 
 ## Summary prompt rules
 - Write a summary in English and in French (French uses "vous").
