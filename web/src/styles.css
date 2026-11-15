@@ -15,6 +15,7 @@
   --radius-card: 24px;
   --ease-out: cubic-bezier(.23, 1, .32, 1);        /* entrances, presses */
   --ease-in-out: cubic-bezier(.77, 0, .175, 1);    /* things moving across the screen */
+  --ease-glide: cubic-bezier(.16, 1, .3, 1);       /* long expo ease-out: the handoff light's open-ended trip */
 }
 
 * { box-sizing: border-box; }
@@ -78,14 +79,13 @@ th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
 .panel { grid-row: 1 / 4; position: relative; overflow: hidden; background: var(--card); border-radius: var(--radius-card); }
 .panel.fr, .meeting h2.fr, .controls.fr { grid-column: 1; }
 .panel.en, .meeting h2.en, .controls.en { grid-column: 2; }
-.meeting > h2, .captions, .controls { position: relative; } /* paint above the (positioned) panels */
-.meeting > h2 { grid-row: 1; margin: 0; padding: 24px 24px 12px; font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-.meeting > h2.en { text-align: right; }
+.meeting h2, .captions, .controls { position: relative; } /* paint above the (positioned) panels */
+.meeting h2 { grid-row: 1; margin: 0; padding: 24px 24px 12px; font-size: 16px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.meeting h2.en { text-align: right; }
 
 .captions { grid-column: 1 / -1; grid-row: 2; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; align-content: start; transition: opacity 200ms ease; }
 .captions.scrolled { -webkit-mask-image: linear-gradient(transparent, #000 48px); mask-image: linear-gradient(transparent, #000 48px); }
 .meeting.translating .captions { opacity: .35; }
-.captions-end { grid-column: 1 / -1; height: 0; }
 .cap { padding: 0 24px 20px; animation: rise 200ms var(--ease-out); }
 .cap .label { display: block; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .cap p { margin: 2px 0 0; font-size: 18px; }
@@ -111,7 +111,7 @@ th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
 .dots i:nth-child(3) { animation-delay: 300ms; }
 
 /* End sits in its own row under both panels (no longer floating over the mics) */
-.end-row { grid-column: 1 / -1; grid-row: 4; display: flex; justify-content: center; padding-top: 12px; }
+.end-row { position: relative; z-index: 1; grid-column: 1 / -1; grid-row: 4; display: flex; justify-content: center; padding-top: 12px; } /* above the travelling light */
 .btn.end { border-color: var(--end); background: var(--end); color: #fff; }
 
 .banner { position: fixed; z-index: 2; top: 16px; left: 50%; transform: translateX(-50%); width: min(1180px, calc(100% - 32px)); padding: 14px 24px;
@@ -119,18 +119,69 @@ th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
 
 /* Glow B + D: soft light behind the mic. JS writes transform/opacity on the <i> every frame (see audio.js);
    the softness is the gradient itself, not a blur filter. The wrapper only fades in/out. */
-.bloom { position: absolute; left: 50%; bottom: 88px; opacity: 0; transition: opacity 300ms var(--ease-out); pointer-events: none; } /* 88px = mic centre */
+.bloom { position: absolute; left: 50%; bottom: 88px; opacity: 0; transition: opacity 200ms var(--ease-out); pointer-events: none; } /* 88px = mic centre; exit 200 ms */
 .bloom i { position: absolute; left: -280px; top: -280px; width: 560px; height: 560px; border-radius: 50%;
   background: radial-gradient(closest-side, var(--glow), transparent); transform: scale(.7); opacity: .4; }
-.panel.speaking .bloom, .panel.playing .bloom { opacity: 1; }
+.panel.speaking .bloom, .panel.playing .bloom { opacity: 1; transition-duration: 300ms; } /* enter 300 ms: exits are faster */
 
-/* Glow J: handoff band between the two mics (position measured in JS) */
-.handoff { position: fixed; height: 90px; border-radius: 45px; pointer-events: none; background: linear-gradient(90deg, var(--purple), var(--teal));
-  filter: blur(28px); opacity: 0; transform: scaleX(0); transform-origin: left;
-  transition: transform 400ms var(--ease-in-out), opacity 400ms var(--ease-out); }
-.handoff.to-fr { transform-origin: right; background: linear-gradient(270deg, var(--purple), var(--teal)); }
-.handoff.travel { opacity: .55; transform: scaleX(.5); }
-.handoff.arrive { opacity: 0; transform: scaleX(1); transition-duration: 500ms; }
+/* Glow J: the handoff. One light (same soft gradient as the bloom, no blur filter) travels from the speaker's mic
+   to the listener's mic. Only transform + opacity move. --dist is measured in JS; stages are set by Meeting.jsx.
+   - travel: glides 70% of the way on a long expo ease-out, so it moves fast at first and is still creeping
+     when a typical 1.5–2.5 s translation comes back (never parked). Breathes gently if the wait runs long.
+   - arrive: retargets mid-flight (a transition, not keyframes) to the listener and fades as their glow fades in. */
+.orb { position: fixed; z-index: 0; width: 220px; height: 220px; margin: -110px 0 0 -110px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, #7c5cffb3, transparent);
+  transform: translate(var(--x, 0px), var(--y, 0px)) scale(var(--s, .8)); opacity: 0;
+  transition: transform 2400ms var(--ease-glide), opacity 200ms var(--ease-out); }
+.orb::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(closest-side, #14b8a6b3, transparent);
+  opacity: 0; transition: opacity 2400ms ease; } /* purple → teal on the way */
+.orb.travel { --x: calc(var(--dx) * .7); --y: calc(var(--dy) * .7); --s: 1; opacity: 1; }
+/* Same animation value on every later stage, so changing stage never restarts or cancels it (cancelling would snap the size) */
+.orb.travel, .orb.arrive, .orb.gone { animation: breathe 1400ms ease-in-out 900ms infinite; }
+.orb.travel::after { opacity: .45; }
+.orb.arrive { --x: var(--dx); --y: var(--dy); --s: 1; opacity: 0;
+  transition: transform 380ms var(--ease-out), opacity 220ms var(--ease-out) 160ms; } /* lands, then dissolves into the listener's glow */
+.orb.arrive::after { opacity: 1; transition-duration: 300ms; }
+.orb.gone { --x: calc(var(--dx) * .7); --y: calc(var(--dy) * .7); --s: .9; opacity: 0;
+  transition: transform 200ms var(--ease-out), opacity 150ms var(--ease-out); } /* error: fades where it is, faster than it came */
+@keyframes breathe { 50% { scale: 1.08; } } /* individual `scale` property, so it stacks on the transform transition */
+.controls { z-index: 1; } /* mics stay above the travelling light */
+
+/* --- Face-to-face (portrait phones/tablets; Figma "/meeting · phone face-to-face") ---
+   The device lies flat between parent and teacher. English half on top, French half below, End in the middle.
+   The English half's *content* is rotated 180° (not the half itself), so its mic keeps its own layer above the
+   travelling light; its rows are reversed so, once rotated, the heading sits at the teacher's far edge. */
+.meeting.face { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); padding-top: max(12px, env(safe-area-inset-top)); }
+.half { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
+.half.en { grid-row: 1; grid-template-rows: auto minmax(0, 1fr) auto; }
+.half.fr { grid-row: 3; }
+.meeting.face .half > * { grid-column: 1; }
+.meeting.face .panel { grid-row: 1 / -1; }
+.half.en > h2 { grid-row: 3; transform: rotate(180deg); }
+.half.en > .captions { grid-row: 2; transform: rotate(180deg); }
+.half.en > .controls { grid-row: 1; transform: rotate(180deg); }
+.half.en .bloom { bottom: auto; top: 64px; } /* the teacher's mic is at the top edge of the screen */
+.meeting.face .end-row { grid-row: 2; grid-column: 1; padding: 8px 0; }
+.meeting.face h2 { padding: 16px 20px 8px; font-size: 14px; text-align: left; }
+.captions.single { grid-template-columns: 1fr; }
+.meeting.face .cap { padding: 0 20px 14px; }
+.meeting.face .cap p { font-size: 16px; }
+.meeting.face .cap.latest p { font-size: 22px; }
+.meeting.face .hint { margin: 6vh 20px 0; font-size: 22px; }
+.meeting.face .controls { gap: 8px; padding: 8px 16px 16px; }
+.meeting.face .half.en > .controls { padding: 8px 16px 16px; }
+.meeting.face .status { font-size: 15px; }
+.meeting.face .mic { width: 96px; height: 96px; }
+.meeting.face .mic svg { width: 40px; height: 40px; }
+.meeting.face .bloom { bottom: 64px; } /* 16px padding + half of the 96px mic */
+.meeting.face .half.en .bloom { bottom: auto; top: 64px; }
+
+/* Summary on phones: stack the two languages */
+@media (max-width: 700px) {
+  .cols { grid-template-columns: 1fr; gap: 24px; }
+  table { font-size: 16px; }
+  th, td { padding: 8px; }
+}
 
 /* Confirm dialog: modal stays centred; enter 200 ms, backdrop 150 ms */
 dialog.confirm { width: min(520px, calc(100% - 32px)); padding: 0; border: 0; border-radius: 20px; box-shadow: 0 16px 48px #141a262e; }
@@ -153,5 +204,5 @@ dialog.confirm .btn { font-size: 16px; padding: 12px 20px; }
   .page, .cap, .meeting-card, dialog.confirm[open] { animation-name: fade; }
   .dots i, .bar { animation: none; opacity: .8; }
   .bloom i { transform: none; opacity: .7; }
-  .handoff { display: none; }
+  .orb { display: none; } /* reduced motion: no travelling light; the two glows just crossfade */
 }

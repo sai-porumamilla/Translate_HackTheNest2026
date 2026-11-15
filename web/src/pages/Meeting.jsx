@@ -17,6 +17,19 @@ const STATUS = {
   noSpeech: { fr: 'Aucune parole détectée · Réessayez', en: 'No speech detected · Try again' },
 };
 const PURPLE = '#7c5cff73', TEAL = '#14b8a673'; // purple = a person talking, teal = ParentBridge talking
+// Portrait phones and tablets: face-to-face layout (device lies flat between parent and teacher).
+const FACE_TO_FACE = '(orientation: portrait) and (max-width: 1024px)';
+
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const mq = matchMedia(query);
+    const update = () => setMatches(mq.matches);
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+}
 const mimeType = window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/mp4';
 
 // One turn: idle → recording → translating → playing → idle.
@@ -29,14 +42,14 @@ export default function Meeting() {
   const [blocked, setBlocked] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [glowColor, setGlowColor] = useState({ fr: PURPLE, en: PURPLE }); // kept after a turn so the fade-out keeps its colour
-  const [band, setBand] = useState(null); // handoff band geometry + direction
+  const [orb, setOrb] = useState(null); // handoff light: { key, x, y, dx, dy, stage: start → travel → arrive | gone }
   const [scrolled, setScrolled] = useState(false);
+  const faceToFace = useMediaQuery(FACE_TO_FACE);
 
   const stream = useRef(null), micAnalyser = useRef(null), recorder = useRef(null);
   const startedAt = useRef(0), skipPlayback = useRef(null), history = useRef([]);
   const bloom = { fr: useRef(null), en: useRef(null) };
   const micButton = { parent: useRef(null), teacher: useRef(null) };
-  const captionsEnd = useRef(null);
 
   // Ask for the mic when the meeting opens; release it when leaving the page.
   useEffect(() => {
@@ -52,7 +65,26 @@ export default function Meeting() {
     };
   }, []);
 
-  useEffect(() => { captionsEnd.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [transcript.length]);
+  // Keep the newest turn in view (one caption list on desktop, one per half face-to-face)
+  useEffect(() => {
+    document.querySelectorAll('.captions').forEach(el => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }));
+  }, [transcript.length, faceToFace]);
+
+  // Handoff stages. 'start' renders the orb at the speaker's mic; two frames later 'travel' sets its target,
+  // so the CSS transition has a starting point. 'arrive' / 'gone' remove it once their transition is done.
+  useEffect(() => {
+    if (orb?.stage === 'start') {
+      let second;
+      const first = requestAnimationFrame(() => {
+        second = requestAnimationFrame(() => setOrb(o => (o?.stage === 'start' ? { ...o, stage: 'travel' } : o)));
+      });
+      return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
+    }
+    if (orb?.stage === 'arrive' || orb?.stage === 'gone') {
+      const timer = setTimeout(() => setOrb(null), orb.stage === 'arrive' ? 450 : 220);
+      return () => clearTimeout(timer);
+    }
+  }, [orb?.stage]);
 
   function lightUp(lang, color, reader) {
     setGlowColor(c => ({ ...c, [lang]: color }));
@@ -93,14 +125,15 @@ export default function Meeting() {
     r.rec.stop();
   }
 
-  // The handoff band (Figma "Glow J") runs from the speaker's mic to the listener's mic.
-  // Measured from the real buttons, so it lines up whatever the layout.
+  // Handoff (Figma "Glow J"): one light leaves the speaker's mic and travels to the listener's mic,
+  // turning from purple to teal. Positions are measured from the real buttons, so any layout lines up.
   function startHandoff(speaker) {
     setPhase({ name: 'translating', speaker });
     const a = micButton[speaker].current.getBoundingClientRect();
     const b = micButton[OTHER[speaker]].current.getBoundingClientRect();
-    const ax = a.left + a.width / 2, bx = b.left + b.width / 2;
-    setBand({ toFr: speaker === 'teacher', style: { left: Math.min(ax, bx), width: Math.abs(bx - ax), top: a.top + a.height / 2 - 45 } });
+    const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+    // dx for side-by-side, dy for face-to-face: the same light travels whichever way the mics are laid out
+    setOrb({ key: Date.now(), x: ax, y: ay, dx: b.left + b.width / 2 - ax, dy: b.top + b.height / 2 - ay, stage: 'start' });
   }
 
   // --- Turn: send audio, show captions, play the translation ---
@@ -117,6 +150,7 @@ export default function Meeting() {
     } finally {
       glowStop();
       setPhase({ name: 'idle' });
+      setOrb(o => (o && o.stage !== 'arrive' ? { ...o, stage: 'gone' } : o)); // error / no playback: fade out in place
     }
   }
 
@@ -126,8 +160,13 @@ export default function Meeting() {
     return new Promise(resolve => {
       let done = false;
       const finish = () => { if (!done) { done = true; skipPlayback.current = null; resolve(); } };
-      // The band reaches the listener on the same frame the voice starts (not after a fixed delay).
-      const started = reader => { setPhase({ name: 'playing', speaker: turn.speaker, listener }); lightUp(LANG[listener], TEAL, reader); };
+      // The light lands on the same frame the voice starts (not after a fixed delay): the orb finishes its trip
+      // and fades while the listener's glow fades in, so the two merge into one light.
+      const started = reader => {
+        setPhase({ name: 'playing', speaker: turn.speaker, listener });
+        setOrb(o => o && { ...o, stage: 'arrive' });
+        lightUp(LANG[listener], TEAL, reader);
+      };
 
       if (audio_b64) {
         const audio = new Audio('data:audio/mpeg;base64,' + audio_b64);
@@ -192,7 +231,48 @@ export default function Meeting() {
     );
   }
 
-  const handoffStage = phase.name === 'translating' ? ' travel' : phase.name === 'playing' ? ' arrive' : '';
+  // --- Pieces shared by both layouts ---
+
+  const translatingClass = phase.name === 'translating' ? ' translating' : '';
+
+  const panel = lang => (
+    <div key={`panel-${lang}`} className={`panel ${lang}${speakingLang === lang ? ' speaking' : ''}${playingLang === lang ? ' playing' : ''}`}>
+      <div className="bloom"><i ref={bloom[lang]} style={{ '--glow': glowColor[lang] }} /></div>
+    </div>
+  );
+
+  const heading = lang => <h2 key={`h-${lang}`} className={lang} lang={lang}>{lang === 'fr' ? 'Français' : 'English'}</h2>;
+
+  const HINT = {
+    fr: [blocked ? 'Micro non disponible' : 'Touchez le micro pour parler', 'Rencontre parents-enseignant · Léo Martin, 4e année'],
+    en: [blocked ? 'Microphone unavailable' : 'Tap the mic to speak', 'Parent–teacher conference · Léo Martin, Grade 4'],
+  };
+
+  const captions = langs => (
+    <div key={`captions-${langs.join()}`} className={`captions${langs.length === 1 ? ' single' : ''}${scrolled ? ' scrolled' : ''}`}
+         onScroll={e => setScrolled(e.currentTarget.scrollTop > 0)}>
+      {transcript.length === 0 && langs.map(lang => (
+        <p key={lang} className="hint" lang={lang}>{HINT[lang][0]}<small>{HINT[lang][1]}</small></p>
+      ))}
+      {transcript.map((turn, i) => langs.map(lang => {
+        const own = lang === turn.source_lang;
+        return (
+          <div key={`${i}-${lang}`} lang={lang} className={`cap ${own ? 'own' : 'other'}${i === transcript.length - 1 ? ' latest' : ''}`}>
+            <span className="label">{ROLE[lang][turn.speaker]}{own ? '' : ' · ' + ROLE[lang].translated}</span>
+            <p>{own ? turn.source_text : turn.target_text}</p>
+          </div>
+        );
+      }))}
+    </div>
+  );
+
+  const endRow = (
+    <div className="end-row">
+      <button className="btn end" disabled={phase.name !== 'idle' || transcript.length === 0} onClick={() => setConfirming(true)}>
+        Terminer · End
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -202,45 +282,35 @@ export default function Meeting() {
           Microphone blocked: allow mic access in your browser settings, then reload the page.
         </div>
       )}
-      <main className={`meeting${phase.name === 'translating' ? ' translating' : ''}`}>
-        {['fr', 'en'].map(lang => (
-          <div key={lang} className={`panel ${lang}${speakingLang === lang ? ' speaking' : ''}${playingLang === lang ? ' playing' : ''}`}>
-            <div className="bloom"><i ref={bloom[lang]} style={{ '--glow': glowColor[lang] }} /></div>
-          </div>
-        ))}
-        <h2 className="fr" lang="fr">Français</h2>
-        <h2 className="en">English</h2>
+      {faceToFace ? (
+        // Face-to-face: English half on top, rotated for the teacher across the table; French half faces the parent.
+        // Each half shows only its own language.
+        <main className={`meeting face${translatingClass}`}>
+          {['en', 'fr'].map(lang => (
+            <section key={lang} className={`half ${lang}`}>
+              {panel(lang)}
+              {heading(lang)}
+              {captions(lang === 'fr' ? ['fr'] : ['en'])}
+              {micFor(lang === 'fr' ? 'parent' : 'teacher')}
+            </section>
+          ))}
+          {endRow}
+        </main>
+      ) : (
+        // Side by side: one shared caption grid keeps each turn's FR and EN on the same row.
+        <main className={`meeting${translatingClass}`}>
+          {panel('fr')}
+          {panel('en')}
+          {heading('fr')}
+          {heading('en')}
+          {captions(['fr', 'en'])}
+          {micFor('parent')}
+          {micFor('teacher')}
+          {endRow}
+        </main>
+      )}
 
-        <div className={`captions${scrolled ? ' scrolled' : ''}`} onScroll={e => setScrolled(e.currentTarget.scrollTop > 0)}>
-          {transcript.length === 0 && (
-            <>
-              <p className="hint" lang="fr">{blocked ? 'Micro non disponible' : 'Touchez le micro pour parler'}<small>Rencontre parents-enseignant · Léo Martin, 4e année</small></p>
-              <p className="hint" lang="en">{blocked ? 'Microphone unavailable' : 'Tap the mic to speak'}<small>Parent–teacher conference · Léo Martin, Grade 4</small></p>
-            </>
-          )}
-          {transcript.map((turn, i) => ['fr', 'en'].map(lang => { // one row per turn: FR cell, EN cell
-            const own = lang === turn.source_lang;
-            return (
-              <div key={`${i}-${lang}`} lang={lang} className={`cap ${own ? 'own' : 'other'}${i === transcript.length - 1 ? ' latest' : ''}`}>
-                <span className="label">{ROLE[lang][turn.speaker]}{own ? '' : ' · ' + ROLE[lang].translated}</span>
-                <p>{own ? turn.source_text : turn.target_text}</p>
-              </div>
-            );
-          }))}
-          <div ref={captionsEnd} className="captions-end" />
-        </div>
-
-        {micFor('parent')}
-        {micFor('teacher')}
-
-        <div className="end-row">
-          <button className="btn end" disabled={phase.name !== 'idle' || transcript.length === 0} onClick={() => setConfirming(true)}>
-            Terminer · End
-          </button>
-        </div>
-      </main>
-
-      {band && <div className={`handoff${band.toFr ? ' to-fr' : ''}${handoffStage}`} style={band.style} />}
+      {orb && <div key={orb.key} className={`orb ${orb.stage}`} style={{ left: orb.x, top: orb.y, '--dx': `${orb.dx}px`, '--dy': `${orb.dy}px` }} />}
       <ConfirmDialog open={confirming} onClose={result => {
         setConfirming(false);
         if (result === 'end') navigate('/summary', { state: { transcript: history.current } });
