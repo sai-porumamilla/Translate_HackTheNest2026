@@ -15,24 +15,36 @@ Team: two people. Sai (frontend: UI, recorder, captions, summary screen, deploy)
 
 ## Rules you must follow
 - **Never commit API keys.** Keys live in `.env` only. `.env` is in `.gitignore` from the very first commit. Commit `.env.example` with key names and no values.
-- **Synthetic data only.** Use the fictional student "Léo Martin, Grade 4, Maple Ridge Elementary." No real people, students or schools.
+- **Synthetic data only.** Use the fictional student "Léo Martin, Grade 4, Maple Ridge Elementary." No real people, students or schools. The demo teacher account is fictional too.
+- **Never store passwords in plain text, and never store audio or full transcripts.** The database holds only meeting summaries and action items.
 - All code is written during the event. Don't add large prebuilt templates.
 
 ## Scope: MVP only (features 1–6)
-1. Two push-to-talk buttons: "Parent speaks (FR)" and "Teacher speaks (EN)". Hold to record, release to send. The button decides the language; there is no language detection or speaker diarization.
+1. Two push-to-talk buttons: "Parent speaks (FR)" and "Teacher speaks (EN)". Tap to start recording, tap again to send (changed from hold-to-talk; easier on a tablet). The button decides the language; there is no language detection or speaker diarization.
 2. Speech-to-text with ElevenLabs (Scribe), with `language_code` forced from the button.
 3. Translation with Claude (Anthropic API), using `glossary.json` plus the last 6 turns as context.
 4. Text-to-speech with ElevenLabs Flash (multilingual, low latency). Use one voice for French output and a different voice for English output.
 5. Live captions in two columns (EN / FR): speaker, original text, translation.
 6. "End meeting" → `/api/summary` → a bilingual summary + an action-item table.
 
-**Out of scope for now. Don't build these unless asked:** critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning, a database, auth, React.
+The MVP (1–6) is done and verified end to end.
+
+## Phase 2 (agreed Sat night): teacher login + database + dashboard
+Timebox: 2–3 hours. If it isn't working end to end on the live link by then, ship the dashboard with browser storage (`localStorage`) instead, so the demo stays safe.
+7. **Teacher login:** one seeded demo teacher (email + password). No sign-up page, no password reset, no SSO.
+8. **Database:** Render free Postgres. Store only meeting summaries and action items, never audio or full transcripts.
+9. **Dashboard:** "Hello, {name}", a list of past meetings (newest first), open one to see its bilingual summary and action items, and a "New meeting" button that opens the meeting screen.
+- The meeting itself (`/api/turn`, `/api/summary`) still works without logging in.
+- Split: Evan builds the database, endpoints and seed script; Sai builds the login page, dashboard and the save-after-summary call, using mock data until the endpoints are live.
+
+**Out of scope for now. Don't build these unless asked:** video calling (paused), SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning, React.
 
 ## Stack
 - Backend: Python 3.11+, FastAPI, uvicorn, python-multipart, python-dotenv, `elevenlabs` SDK, `anthropic` SDK. (Switched from OpenAI on Sat: no sponsor OpenAI credits.)
-- Frontend: a single `frontend/index.html` with plain JS and inline CSS. Recording uses `MediaRecorder`.
+- Phase 2 adds: `psycopg[binary]` (Postgres driver), and Starlette's `SessionMiddleware` for a signed session cookie (requires `itsdangerous`). Passwords are hashed with the standard library (`hashlib.scrypt` + a random salt); no auth library.
+- Frontend: a single `frontend/index.html` with plain JS and inline CSS. Recording uses `MediaRecorder`; the speaking glow uses the Web Audio API.
 - FastAPI serves `frontend/` as static files at `/`. One server, one origin, no CORS setup.
-- No database. The frontend holds the transcript in memory and sends history with each request.
+- The frontend holds the live transcript in memory and sends history with each request. Postgres stores only finished meeting summaries (Phase 2).
 - Deploy: Render (web service; start command `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`).
 
 ## Repo layout
@@ -47,6 +59,7 @@ frontend/
   index.html
 scripts/
   test_roundtrip.py   # CLI: audio file -> STT -> translate -> TTS -> out.mp3
+  seed_teacher.py     # Phase 2: creates the tables + the demo teacher from env vars
 .env.example
 .gitignore
 README.md
@@ -61,7 +74,12 @@ VOICE_ID_FR=            # voice the parent hears
 VOICE_ID_EN=            # voice the teacher hears
 TRANSLATE_MODEL=        # optional; defaults to claude-haiku-5-5 (fastest, thinking off)
 SUMMARY_MODEL=          # optional; defaults to claude-sonnet-5-5
+DATABASE_URL=           # Phase 2: Render Postgres connection string
+SESSION_SECRET=         # Phase 2: long random string that signs the session cookie
+DEMO_TEACHER_EMAIL=     # Phase 2: used only by scripts/seed_teacher.py
+DEMO_TEACHER_PASSWORD=  # Phase 2: used only by scripts/seed_teacher.py; never commit it
 ```
+On Render, set these in the dashboard's environment variables, never in the repo.
 
 ## API contract (do not change without telling both teammates)
 
@@ -100,6 +118,19 @@ Response 200:
 }
 ```
 Use Claude structured outputs (`output_config.format` with a JSON schema). Validate the result with a Pydantic model.
+
+### Phase 2: login and meetings (JSON)
+All of these except `POST /api/login` return 401 `{"error": "Not logged in"}` without a valid session cookie. Errors use the same `{"error": "..."}` shape as above.
+
+| Endpoint | Request | Response 200 |
+|---|---|---|
+| `POST /api/login` | `{"email": "...", "password": "..."}` | `{"name": "Ms. Tremblay"}` and sets the session cookie. Wrong email or password: 401 `{"error": "Wrong email or password"}` |
+| `POST /api/logout` | none | `{}` and clears the cookie |
+| `GET /api/me` | none | `{"name": "..."}` |
+| `POST /api/meetings` | `{"student": "Léo Martin", "summary_en": "...", "summary_fr": "...", "action_items": [...]}` (same shape as the `/api/summary` response, plus `student`) | `{"id": 1, "created_at": "2026-11-14T21:30:00Z"}` |
+| `GET /api/meetings` | none | `[{"id", "created_at", "student", "summary_en", "summary_fr", "action_items"}]`, newest first, only the logged-in teacher's meetings |
+
+Tables: `teachers (id, email unique, name, password_hash, salt)` and `meetings (id, teacher_id, created_at, student, summary_json)`.
 
 ## Reference code (speech.py)
 Confirm the current model IDs in the ElevenLabs docs before relying on these.
@@ -153,7 +184,7 @@ Current Claude models reject `temperature`, so leave it out; faithfulness comes 
 ```
 
 ## Frontend requirements (index.html)
-- Two large buttons. Use `pointerdown` to start and `pointerup`/`pointerleave` to stop recording, so it works on both mouse and touch. Disable both buttons while a request is in flight.
+- Two large buttons. Tap to start recording, tap again to send. The other button and "End meeting" are disabled while one side records, and both mics stay locked while a request is in flight and until the translated audio finishes playing.
 - Recorder: request the mic once on page load. Use `audio/webm;codecs=opus` if `MediaRecorder.isTypeSupported` says yes, otherwise `audio/mp4`. Ignore clips shorter than 0.5 s.
 - On response: append the turn to the in-memory `transcript`, render the caption **first**, then play `audio_b64` with `new Audio("data:audio/mpeg;base64,...")`.
 - Captions: two columns (English | Français). For each turn, put the original in its language's column and the translation in the other, labeled with the speaker. Auto-scroll to the newest turn.
@@ -161,6 +192,7 @@ Current Claude models reject `temperature`, so leave it out; faithfulness comes 
 - "End meeting": POST the transcript (without audio) to `/api/summary` → show a summary view with both summaries side by side and an action-item table (Owner | Task EN | Tâche FR | Due).
 - Mock mode: if the URL has `?mock=1`, return a fake turn response without calling the backend. This lets the frontend be built before the backend is ready.
 - A clean, legible look with large text for a demo table. No framework.
+- Phase 2: a login page (bilingual error message), the dashboard, a logout button, and redirect to login when `/api/me` returns 401. After a summary arrives, the meeting is saved with `POST /api/meetings` when a teacher is logged in.
 
 ## Build order and checkpoints
 1. Scaffold the repo, `.gitignore`, `.env.example`, a FastAPI hello world, and the static mount. Commit.
@@ -170,6 +202,9 @@ Current Claude models reject `temperature`, so leave it out; faithfulness comes 
 5. Teacher direction, glossary, history context, two-column captions.
 6. `/api/summary` + the summary screen. **Checkpoint (target 9:00 PM):** a full demo meeting runs from start to finish.
 7. Deploy to Render, test the live link, write the README (setup, architecture diagram in text, how to run).
+8. Phase 2, hour 1: endpoints + seed script (Evan) and login page + dashboard against mock data (Sai), in parallel.
+9. Phase 2, hour 2: connect them locally and test with the real demo login.
+10. Phase 2, hour 3: create the Render Postgres database, set the new env vars, deploy, and test on the live link. **Not working end to end by now → switch to the `localStorage` dashboard.**
 
 ## Troubleshooting
 - STT rejects webm → try `audio/mp4` from MediaRecorder, or test the endpoint with an `.mp3` file to isolate the problem.
