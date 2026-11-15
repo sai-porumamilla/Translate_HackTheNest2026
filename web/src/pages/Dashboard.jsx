@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, dateFormat } from '../api.js';
+import { api, dateFormat, MOCK } from '../api.js';
 import { useAuth } from '../auth.jsx';
 
 const STAGGER = [0, 40, 70, 95, 115, 130]; // ms; short and non-uniform, then the rest land together
@@ -16,6 +16,15 @@ export default function Dashboard() {
     api.meetings().then(setMeetings, e => (e.status === 401 ? setUser(null) : setError(e.message)));
   }, [setUser]);
 
+  async function startCall() {
+    try {
+      const { code } = await api.createCall();
+      navigate(`/call/${code}`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function signOut() {
     await api.logout().catch(() => {});
     setUser(null);
@@ -28,6 +37,7 @@ export default function Dashboard() {
         <h1>Bonjour · Hello, {user.name}</h1>
         <div className="row">
           <button className="btn" onClick={signOut}><span lang="fr">Déconnexion</span> · Sign out</button>
+          {isTeacher && !MOCK && <button className="btn" onClick={startCall}><span lang="fr">Appel vidéo</span> · Video call</button>}
           {isTeacher && <Link className="btn primary" to="/meeting"><span lang="fr">Nouvelle rencontre</span> · New meeting</Link>}
         </div>
       </header>

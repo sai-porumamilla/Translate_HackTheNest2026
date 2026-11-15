@@ -37,7 +37,7 @@ Timebox: 2–3 hours. If it isn't working end to end on the live link by then, s
 - The meeting itself (`/api/turn`, `/api/summary`) still works without logging in.
 - Split: Evan builds the database, endpoints and seed script; Sai builds the login page, dashboard and the save-after-summary call, using mock data until the endpoints are live.
 
-**Out of scope for now. Don't build these unless asked:** video calling (paused), SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning.
+**Out of scope for now. Don't build these unless asked:** SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning.
 
 ## Frontend = React app (`web/`, Sun): this is what's deployed
 The plain-JS `frontend/index.html` is retired (it's in git history). The source is `web/`; **`frontend/` is now build output**.
@@ -95,6 +95,9 @@ DEMO_TEACHER_EMAIL=     # Phase 2: used only by scripts/seed_teacher.py
 DEMO_TEACHER_PASSWORD=  # Phase 2: used only by scripts/seed_teacher.py; never commit it
 DEMO_PARENT_EMAIL=      # Phase 2: used only by scripts/seed_teacher.py
 DEMO_PARENT_PASSWORD=   # Phase 2: used only by scripts/seed_teacher.py; never commit it
+TURN_URLS=              # video calls, optional: TURN relay URL(s), comma-separated (needed for phones on cellular / strict school Wi-Fi)
+TURN_USERNAME=          # video calls, optional
+TURN_CREDENTIAL=        # video calls, optional
 ```
 On Render, set these in the dashboard's environment variables, never in the repo.
 `DATABASE_URL`: use Render's **External** URL in your local `.env` (for the seed script and local testing) and the **Internal** URL on the Render web service. Both point at the same database.
@@ -152,6 +155,24 @@ All of these except `POST /api/login` return 401 `{"error": "Not logged in"}` wi
 | `GET /api/meetings` | none | `[{"id", "created_at", "student", "summary_en", "summary_fr", "action_items"}]`, newest first. A teacher gets the meetings they saved; a parent gets the meetings about their child |
 
 Tables (see `backend/db.py`): `users (id, email unique, name, role 'teacher'|'parent', password_hash, salt)`, `students (id, name, teacher_id, parent_id)` and `meetings (id, teacher_id, student_id, created_at, summary_json)`. The `students` row is what links a saved meeting to the parent's dashboard. Demo data (from `scripts/seed_teacher.py`): teacher "Ms. Tremblay", parent "Mme Martin", student "Léo Martin".
+
+### Video calls (Sun)
+Teacher (signed in) starts a call from the dashboard and sends the link `/#/call/{code}` to the parent (who can be a guest).
+The server only does **signaling** (helping two browsers find each other), via a polled mailbox. Video goes peer to peer over
+WebRTC, and so does everything else in the call (turns, translated audio, who's talking, end) over a WebRTC data channel.
+The call carries **video only**: each person hears only the ElevenLabs translation, never the other's raw voice.
+Push-to-talk works as in person: the speaker's device calls `POST /api/turn` (speaker = its role) and sends the turn to the other device, which plays it.
+Calls live in memory for 2 hours (one Render instance; a restart ends open calls). No new dependency.
+
+| Endpoint | Request | Response 200 |
+|---|---|---|
+| `POST /api/calls` | none (teacher session) | `{"code": "8 chars", "ice_servers": [...]}`. Not signed in: 401; parent: 403 bilingual |
+| `GET /api/calls/{code}` | none | `{"teacher_name": "...", "ice_servers": [...]}`; unknown/expired: 404 `"Appel introuvable ou terminé · Call not found or ended"` |
+| `POST /api/calls/{code}/signal` | `{"role": "teacher"\|"parent", "type": "hello"\|"offer"\|"answer"\|"ice"\|"bye"\|"end", "data": {...}}` | `{"n": 12}`. `role: "teacher"` requires the session of the teacher who created the call (else 401) |
+| `GET /api/calls/{code}/signal?role=...&after=N` | none | messages from the *other* side newer than `N`: `[{"n", "from", "type", "data"}]` |
+
+`ice_servers` = Google STUN, plus a TURN relay when `TURN_URLS` is set. Data channel messages (JSON, chunked at 16 KB because Safari caps messages):
+`hi`, `floor` (I'm talking; the teacher wins a tie), `free`, `translating`, `turn` (`{turn, audio}`), `playing`, `done`, `end`.
 
 ## Reference code (speech.py)
 Confirm the current model IDs in the ElevenLabs docs before relying on these.

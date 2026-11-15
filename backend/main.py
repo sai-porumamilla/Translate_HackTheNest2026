@@ -264,6 +264,93 @@ def list_meetings(request: Request):
     ]
 
 
+# ---------- Video calls ----------
+# The server only helps two browsers find each other ("signaling"). After that, video and every turn
+# (captions + translated audio) travel peer to peer over WebRTC, so no media ever goes through this server.
+# Calls live in memory: fine for one Render instance; a restart ends open calls.
+
+CALL_TTL = 2 * 3600            # a call link works for 2 hours
+calls: dict[str, dict] = {}    # code -> {"teacher_id", "teacher_name", "created", "messages": [...]}
+calls_lock = threading.Lock()  # requests run in worker threads
+
+
+def ice_servers() -> list[dict]:
+    """How browsers reach each other. STUN works on most home/office networks; phones on cellular or strict
+    school Wi-Fi also need a TURN relay, set with TURN_URLS (comma-separated), TURN_USERNAME, TURN_CREDENTIAL."""
+    servers = [{"urls": "stun:stun.l.google.com:19302"}]
+    if os.environ.get("TURN_URLS"):
+        servers.append({"urls": os.environ["TURN_URLS"].split(","),
+                        "username": os.environ.get("TURN_USERNAME", ""),
+                        "credential": os.environ.get("TURN_CREDENTIAL", "")})
+    return servers
+
+
+def live_call(code: str) -> dict | None:
+    with calls_lock:
+        for old in [c for c, call in calls.items() if time.time() - call["created"] > CALL_TTL]:
+            del calls[old]
+        return calls.get(code)
+
+
+CALL_GONE = "Appel introuvable ou terminé · Call not found or ended"
+
+
+@app.post("/api/calls")
+def create_call(request: Request):
+    """Teacher starts a video call; the code goes in the link sent to the parent."""
+    user = logged_in_user(request)
+    if not user:
+        return error("Not logged in", 401)
+    if user["role"] != "teacher":
+        return error("Seul l'enseignant peut lancer un appel · Only teachers can start a call", 403)
+    code = secrets.token_urlsafe(6)  # 8 characters, unguessable
+    with calls_lock:
+        calls[code] = {"teacher_id": user["id"], "teacher_name": user["name"], "created": time.time(), "messages": []}
+    return {"code": code, "ice_servers": ice_servers()}
+
+
+@app.get("/api/calls/{code}")
+def call_info(code: str):
+    call = live_call(code)
+    if not call:
+        return error(CALL_GONE, 404)
+    return {"teacher_name": call["teacher_name"], "ice_servers": ice_servers()}
+
+
+class Signal(BaseModel):
+    role: str            # who is sending: "teacher" | "parent"
+    type: str            # "hello" | "offer" | "answer" | "ice" | "bye" | "end"
+    data: dict | None = None
+
+
+@app.post("/api/calls/{code}/signal")
+def send_signal(code: str, body: Signal, request: Request):
+    call = live_call(code)
+    if not call:
+        return error(CALL_GONE, 404)
+    if body.role not in ("teacher", "parent"):
+        return error("role must be teacher or parent", 400)
+    if body.role == "teacher":  # only the teacher who created the call can speak for the teacher side
+        user = logged_in_user(request)
+        if not user or user["id"] != call["teacher_id"]:
+            return error("Not logged in", 401)
+    with calls_lock:
+        n = len(call["messages"]) + 1
+        call["messages"].append({"n": n, "from": body.role, "type": body.type, "data": body.data})
+        del call["messages"][:-200]  # keep the mailbox small
+    return {"n": n}
+
+
+@app.get("/api/calls/{code}/signal")
+def read_signals(code: str, role: str, after: int = 0):
+    """Messages from the *other* side, newer than `after`. The browser polls this while setting up the call."""
+    call = live_call(code)
+    if not call:
+        return error(CALL_GONE, 404)
+    with calls_lock:
+        return [m for m in call["messages"] if m["from"] != role and m["n"] > after]
+
+
 # Serve frontend/ at "/". This must be mounted LAST so it doesn't shadow /api routes.
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 if os.path.isdir(FRONTEND_DIR):

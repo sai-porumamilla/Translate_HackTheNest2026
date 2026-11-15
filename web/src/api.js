@@ -23,6 +23,11 @@ const realApi = {
   meetings: () => request('/api/meetings'),
   saveMeeting: meeting => request('/api/meetings', jsonPost(meeting)),
   summary: transcript => request('/api/summary', jsonPost({ transcript })),
+  // Video calls: setup messages only (video and turns then go peer to peer)
+  createCall: () => request('/api/calls', { method: 'POST' }),
+  callInfo: code => request(`/api/calls/${encodeURIComponent(code)}`),
+  signal: (code, role, type, data) => request(`/api/calls/${encodeURIComponent(code)}/signal`, jsonPost({ role, type, data })),
+  signals: (code, role, after) => request(`/api/calls/${encodeURIComponent(code)}/signal?role=${role}&after=${after}`),
   turn(blob, speaker, history) {
     const form = new FormData();
     form.append('audio', blob, blob.type.startsWith('audio/webm') ? 'turn.webm' : 'turn.mp4');
