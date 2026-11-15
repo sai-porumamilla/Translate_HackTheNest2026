@@ -7,11 +7,18 @@ Pipeline per turn: push-to-talk recording → ElevenLabs speech-to-text → Clau
 Team: two people. Sai (frontend: UI, recorder, captions, summary screen, deploy) and Evan (backend, prompts, glossary, French QA). Both must be able to explain all the code to judges, so keep it simple and readable. No clever abstractions.
 
 ## Hard deadlines
-- **Sat 11:59 PM:** Devpost draft + event app submission (aim to submit by 11:45 PM).
-- **Sun 12:00 PM:** final submission. No late entries.
-- **Sun 1:15 PM:** live demo, about 2 minutes, science-fair style.
-- Devpost needs: a public GitHub repo, a demo video of 3 minutes or less, every teammate added, tracks listed, AI tools used.
-- Tracks: AI/ML (OpenAI + Exa), Best Use of ElevenLabs ("the voice is the product"), CS Department.
+- ~~**Sat 11:59 PM:** Devpost draft + event app submission~~ (done).
+- **Sun 12:00 PM:** final submission on Devpost. No late entries.
+- **Sun 1:00 PM:** demo table setup (table number in the event app). **1:15–2:15 PM:** demos and judging, science-fair style in the Student Center Ballroom; judges visit more than once. Show it working live in about 2 minutes, then questions. Judges may ask anyone to walk through any part of the code.
+- **Sun 3:00 PM:** closing ceremony and awards.
+- Devpost needs: name, short description, the problem it solves, a public GitHub repo, a demo video of 3 minutes or less (MLH requires it), every teammate added, tracks entered (main + partner + MLH), which AI tools were used.
+
+## Tracks (from the Hacker Packet + the Sun update)
+- **Future of Intelligence** (main track, AI/ML). **Updated:** no model restrictions anymore (Exa credits fell through), so Claude is fine. Judged on creativity, innovation, technical implementation, real-world impact and meaningful AI integration; **agentic AI and integrations across AI fields are strongly encouraged**. The packet's "skip the clichés": no "chatbot over your notes" or thin wrapper around one API.
+- **Best Use of ElevenLabs** (partner): "judged on whether the voice is the product, not a feature bolted on". Our strongest fit.
+- **Best Use of SSOJet** (partner, optional): "how naturally sign-in fits your product". Not built; would need SSOJet setup + an OIDC callback.
+- **Best Domain Name from GoDaddy Registry** (MLH, optional): register a domain and select it on Devpost.
+- AI tools to list on Devpost: Claude (Anthropic API: translation, summaries), ElevenLabs (Scribe speech-to-text, Flash text-to-speech), Claude Code (development).
 
 ## Rules you must follow
 - **Never commit API keys.** Keys live in `.env` only. `.env` is in `.gitignore` from the very first commit. Commit `.env.example` with key names and no values.
