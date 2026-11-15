@@ -5,3 +5,6 @@ CLAUDE.local.md
 __pycache__/
 *.pyc
 out.mp3
+
+web/node_modules/
+web/dist/
