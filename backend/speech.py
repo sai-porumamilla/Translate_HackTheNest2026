@@ -20,6 +20,7 @@ def transcribe(audio_bytes: bytes, lang: str) -> str:
         model_id=STT_MODEL,
         language_code=lang,
         tag_audio_events=False,  # don't add "(laughs)" style tags to the text
+        no_verbatim=True,        # drop filler words ("euh", "um") and false starts
     )
     return result.text.strip()
 

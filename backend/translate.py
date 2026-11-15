@@ -61,6 +61,7 @@ TRANSLATE_PROMPT = """You are a professional school interpreter in a parent–te
 Translate the latest message from {src} to {tgt}.
 - Translate faithfully. Do not add, omit, or soften anything.
 - Keep names, dates, times and numbers exactly.
+- Leave out filler words and hesitations (euh, um, uh, hmm, ben, you know).
 - Use this glossary (English = French). For acronyms, keep the acronym and add a short
   explanation the first time it appears:
 {glossary}
@@ -81,9 +82,23 @@ def translate(text: str, src: str, tgt: str, history: list[dict]) -> str:
     """Translate one message from src to tgt ("fr"/"en") using the glossary and last 6 turns."""
     glossary = "\n".join(f"  {en} = {fr}" for en, fr in GLOSSARY.items())
     system = TRANSLATE_PROMPT.format(src=LANG_NAMES[src], tgt=LANG_NAMES[tgt], glossary=glossary)
-    user = f"Recent conversation for context:\n{format_history(history)}\n\nLatest message:\n{text}"
+    # Restate the target language next to the message: with a long French glossary,
+    # the model sometimes "polished" a French message instead of translating it.
+    user = (f"Recent conversation for context:\n{format_history(history)}\n\n"
+            f"Latest message ({LANG_NAMES[src]}):\n{text}\n\n"
+            f"Write only the {LANG_NAMES[tgt]} translation of the latest message.")
     # One sentence needs no reasoning: fastest model, low effort, thinking off.
-    return ask_claude(system, user, TRANSLATE_MODEL, effort="low", think=False)
+    answer = ask_claude(system, user, TRANSLATE_MODEL, effort="low", think=False)
+    return strip_wrapping_quotes(answer)
+
+
+def strip_wrapping_quotes(text: str) -> str:
+    """Remove quotes around the WHOLE answer ("Alright...") but keep quotes inside it."""
+    for left, right in ['""', '“”', '«»']:
+        inner = text[1:-1].strip()
+        if text.startswith(left) and text.endswith(right) and left not in inner and right not in inner:
+            return inner
+    return text
 
 
 # ---------- Summary ----------
