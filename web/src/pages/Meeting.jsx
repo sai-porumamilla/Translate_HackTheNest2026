@@ -316,8 +316,8 @@ export default function Meeting() {
     <>
       {blocked && (
         <div className="banner" role="alert">
-          <span lang="fr">Micro bloqué : autorisez l'accès au micro dans les réglages du navigateur, puis rechargez la page.</span><br />
-          Microphone blocked: allow mic access in your browser settings, then reload the page.
+          <Bi fr="Micro bloqué : autorisez l'accès au micro dans les réglages du navigateur, puis rechargez la page."
+              en="Microphone blocked: allow mic access in your browser settings, then reload the page." />
         </div>
       )}
       {faceToFace ? (

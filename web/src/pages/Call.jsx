@@ -5,7 +5,7 @@ import { analyserFor, audioContext, envelopeOf, fakeVoice, glowFollow, glowStop,
 import { useAuth } from '../auth.jsx';
 import { Dots, MicIcon, SpeakerIcon, StopIcon } from '../components/icons.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
-import { say, titled } from '../lang.jsx';
+import { Bi, say, titled } from '../lang.jsx';
 
 // Video call (Figma "Video call"). Teacher on a laptop, parent on a phone, each in their own language.
 // - The call carries VIDEO ONLY: you never hear the other person's raw voice, only the ElevenLabs translation.
@@ -382,7 +382,7 @@ export default function Call() {
     return (
       <main className="call-center"><div className="card page">
         <h1>{say(lang, 'Appel introuvable', 'Call not found')}</h1>
-        <p className="sub">Appel introuvable ou terminé · Call not found or ended</p>
+        <p className="sub"><Bi lang={lang} fr="Appel introuvable ou terminé" en="Call not found or ended" /></p>
         <Link className="btn primary" to="/">ParentBridge</Link>
       </div></main>
     );
@@ -403,21 +403,21 @@ export default function Call() {
   if (stage === 'lobby') {
     return (
       <main className="call-center"><div className="card page">
+        {backButton}
         {role === 'teacher' ? (
           <>
-            <h1>Appel vidéo · Video call</h1>
+            <h1><Bi lang={lang} fr="Appel vidéo" en="Video call" /></h1>
             <p className="sub">Léo Martin · {say(lang, 'Le parent entendra la traduction en français.', 'The parent will hear the translation in French.')}</p>
           </>
         ) : (
           <>
             <h1 lang="fr">{info ? `${titled('fr', info.teacher_name)} vous invite à un appel vidéo` : 'Appel vidéo'}</h1>
-            <p className="sub">invited you to a video call · Léo Martin</p>
-            <p className="sub">Vous entendrez la traduction en français. · You’ll hear the translation in your language.</p>
+            <p className="sub" lang="en">invited you to a video call · Léo Martin</p>
+            <p className="sub"><Bi lang={lang} fr="Vous entendrez la traduction en français." en="You’ll hear the translation in your language." /></p>
           </>
         )}
-        {backButton}
         <button className="btn primary wide" onClick={join} disabled={!info}>
-          {role === 'teacher' ? 'Démarrer l’appel · Start call' : 'Rejoindre l’appel · Join call'}
+          {role === 'teacher' ? <Bi lang={lang} fr="Démarrer l’appel" en="Start call" /> : <Bi lang={lang} fr="Rejoindre l’appel" en="Join call" />}
         </button>
         {error && <p className="form-error">{error}</p>}
       </div></main>
@@ -452,7 +452,7 @@ export default function Call() {
                     <div className="share">
                       <input readOnly value={link} onFocus={e => e.target.select()} aria-label="Call link" />
                       <button className="btn primary" onClick={() => navigator.clipboard?.writeText(link).then(() => setCopied(true))}>
-                        {copied ? 'Copié · Copied' : 'Copier · Copy'}
+                        {copied ? <Bi lang={lang} fr="Copié" en="Copied" /> : <Bi lang={lang} fr="Copier" en="Copy" />}
                       </button>
                     </div>
                   </>
@@ -465,7 +465,7 @@ export default function Call() {
         </div>
 
         <aside className="call-captions">
-          <h2 className="eyebrow">Sous-titres · Captions</h2>
+          <h2 className="eyebrow">{say(lang, 'Sous-titres', 'Captions')}</h2>
           <div className="list">
             {transcript.length === 0 && <p className="muted">{say(lang, 'Les sous-titres apparaîtront ici.', 'Captions will appear here.')}</p>}
             {transcript.map((turn, i) => {
@@ -500,7 +500,7 @@ export default function Call() {
             ↻ {say(lang, 'Répéter', 'Repeat')}
           </button>
           <button className="btn end" onClick={() => setConfirming(true)} disabled={phase.name === 'recording' || phase.name === 'translating'}>
-            <span className="long">Raccrocher · End call</span>
+            <span className="long"><Bi lang={lang} fr="Raccrocher" en="End call" /></span>
             <span className="short">{say(lang, 'Raccrocher', 'End call')}</span>
           </button>
           </div>
