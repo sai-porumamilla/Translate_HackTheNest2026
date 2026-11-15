@@ -636,6 +636,7 @@ $('#login-form').onsubmit = async e => {
   } catch (err) {
     $('.form-error').textContent = err.status === 401
       ? 'Courriel ou mot de passe incorrect · Wrong email or password'
+      : [404, 405].includes(err.status) ? 'Connexion pas encore disponible · Sign-in isn’t available yet. Continue without an account below.' // no /api/login on this backend yet
       : err.message;
   } finally {
     button.disabled = false;
