@@ -67,21 +67,27 @@ app.add_middleware(
 
 
 def error(message: str, status: int) -> JSONResponse:
-    """Every error uses the same shape, so the frontend can show it in the captions area."""
+    """Every error uses the same shape, so the frontend can show it in the captions area.
+
+    The frontend shows these messages as-is, so user-facing ones are bilingual in the same
+    "Français · English" style as the UI. Three are kept exactly as written because the frontend
+    or the API contract depends on them: "No speech detected", "Not logged in",
+    "Wrong email or password".
+    """
     return JSONResponse({"error": message}, status_code=status)
 
 
 @app.exception_handler(RequestValidationError)
 def bad_request(request, exc):
     # A missing or wrong field (e.g. no audio file) gives our error shape, not FastAPI's default.
-    return error("Bad request: missing or invalid fields.", 400)
+    return error("Requête invalide · Bad request: missing or invalid fields", 400)
 
 
 @app.exception_handler(psycopg.Error)
 def database_error(request, exc):
     # Any database problem (down, bad DATABASE_URL, ...) gives one clear message instead of a crash.
     log.error(f"Database error: {type(exc).__name__}: {exc}")
-    return error("Database error. Please try again.", 500)
+    return error("Base de données indisponible, réessayez · Database error, please try again", 500)
 
 
 @app.get("/api/health")
@@ -115,9 +121,10 @@ def turn(audio: UploadFile = File(...), speaker: str = Form(...), history: str =
 
     audio_bytes = audio.file.read()
     if not audio_bytes:
-        return error("No audio received.", 400)
+        return error("Aucun son reçu · No audio received", 400)
     if len(audio_bytes) > MAX_AUDIO_BYTES:
-        return error("Recording is too long. Please speak in shorter turns.", 400)
+        return error("Enregistrement trop long, parlez en plus courts échanges · "
+                     "Recording is too long, please speak in shorter turns", 400)
 
     # Each stage is timed and logged, so a slow stage is easy to spot.
     try:
@@ -126,10 +133,11 @@ def turn(audio: UploadFile = File(...), speaker: str = Form(...), history: str =
         t_stt = time.time() - start
     except Exception as e:
         log.exception(f"Speech-to-text failed: {e}")
-        return error("Speech recognition failed. Please try again.", 502)
+        return error("Reconnaissance vocale échouée, réessayez · Speech recognition failed, please try again", 502)
 
     if not source_text:
-        return error("No speech detected", 400)  # skip translation and TTS: saves time and money
+        # Exact text: the frontend matches it to show its own message. Skips translation + TTS.
+        return error("No speech detected", 400)
 
     try:
         start = time.time()
@@ -137,7 +145,7 @@ def turn(audio: UploadFile = File(...), speaker: str = Form(...), history: str =
         t_translate = time.time() - start
     except Exception as e:
         log.exception(f"Translation failed: {e}")
-        return error("Translation failed. Please try again.", 502)
+        return error("Traduction échouée, réessayez · Translation failed, please try again", 502)
 
     try:
         start = time.time()
@@ -145,7 +153,7 @@ def turn(audio: UploadFile = File(...), speaker: str = Form(...), history: str =
         t_tts = time.time() - start
     except Exception as e:
         log.exception(f"Text-to-speech failed: {e}")
-        return error("Voice playback failed. Please try again.", 502)
+        return error("Lecture vocale échouée, réessayez · Voice playback failed, please try again", 502)
 
     log.info(f"Turn ({speaker} {src}->{tgt}): speech-to-text {t_stt:.1f}s, "
              f"translation {t_translate:.1f}s, text-to-speech {t_tts:.1f}s, "
@@ -169,7 +177,7 @@ class SummaryRequest(BaseModel):
 def summary(body: SummaryRequest):
     """End of meeting: bilingual summary + action items. See CLAUDE.md for the contract."""
     if not body.transcript:
-        return error("The meeting has no turns yet.", 400)
+        return error("La rencontre ne contient aucun échange · The meeting has no turns yet", 400)
     try:
         start = time.time()
         result = summarize(body.transcript)
@@ -177,7 +185,7 @@ def summary(body: SummaryRequest):
         return result
     except Exception as e:
         log.exception(f"Summary failed: {e}")
-        return error("Could not create the summary. Please try again.", 502)
+        return error("Impossible de créer le résumé, réessayez · Could not create the summary, please try again", 502)
 
 
 # ---------- Phase 2: login + saved meetings (see the API contract in CLAUDE.md) ----------
@@ -234,10 +242,11 @@ def save_meeting(body: MeetingRequest, request: Request):
     if not user:
         return error("Not logged in", 401)
     if user["role"] != "teacher":
-        return error("Only teachers can save meetings", 403)
+        return error("Seul l'enseignant peut enregistrer une rencontre · Only teachers can save meetings", 403)
     student = db.find_student(body.student, user["id"])
     if not student:
-        return error(f"No student named {body.student} in your class.", 400)
+        return error(f"Aucun élève nommé {body.student} dans votre classe · "
+                     f"No student named {body.student} in your class", 400)
     row = db.save_meeting(user["id"], student["id"], body.model_dump(exclude={"student"}))
     return {"id": row["id"], "created_at": iso(row["created_at"])}
 

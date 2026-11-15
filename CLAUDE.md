@@ -136,6 +136,9 @@ Response 200:
 ```
 Use Claude structured outputs (`output_config.format` with a JSON schema). Validate the result with a Pydantic model.
 
+### Error messages (all endpoints)
+The frontend shows `error` as-is, so user-facing messages are bilingual in the UI's style, French first: `"Traduction échouée, réessayez · Translation failed, please try again"`. Three strings are fixed and never translated, because the frontend or this contract depends on the exact text: `"No speech detected"` (the frontend matches it), `"Not logged in"` and `"Wrong email or password"` (the frontend checks the 401 status and shows its own bilingual text). Branch on the status code, not on the text, for everything else.
+
 ### Phase 2: login and meetings (JSON)
 All of these except `POST /api/login` return 401 `{"error": "Not logged in"}` without a valid session cookie. Errors use the same `{"error": "..."}` shape as above.
 
@@ -144,7 +147,7 @@ All of these except `POST /api/login` return 401 `{"error": "Not logged in"}` wi
 | `POST /api/login` | `{"email": "...", "password": "..."}` (email is case-insensitive) | `{"name": "Ms. Tremblay", "role": "teacher"}` (or `"role": "parent"`) and sets the session cookie. Wrong email or password: 401 `{"error": "Wrong email or password"}` |
 | `POST /api/logout` | none | `{}` and clears the cookie |
 | `GET /api/me` | none | `{"name": "...", "role": "teacher" \| "parent"}`. Use `role` to pick which dashboard to show |
-| `POST /api/meetings` | `{"student": "Léo Martin", "summary_en": "...", "summary_fr": "...", "action_items": [...]}` (same shape as the `/api/summary` response, plus `student`) | `{"id": 1, "created_at": "2026-11-14T21:30:00Z"}`. **Teachers only**: a parent gets 403 `{"error": "Only teachers can save meetings"}`. `student` must be one of the teacher's students (case-insensitive), else 400 |
+| `POST /api/meetings` | `{"student": "Léo Martin", "summary_en": "...", "summary_fr": "...", "action_items": [...]}` (same shape as the `/api/summary` response, plus `student`) | `{"id": 1, "created_at": "2026-11-14T21:30:00Z"}`. **Teachers only**: a parent gets 403 `{"error": "Seul l'enseignant peut enregistrer une rencontre · Only teachers can save meetings"}`. `student` must be one of the teacher's students (case-insensitive), else 400 |
 | `GET /api/meetings` | none | `[{"id", "created_at", "student", "summary_en", "summary_fr", "action_items"}]`, newest first. A teacher gets the meetings they saved; a parent gets the meetings about their child |
 
 Tables (see `backend/db.py`): `users (id, email unique, name, role 'teacher'|'parent', password_hash, salt)`, `students (id, name, teacher_id, parent_id)` and `meetings (id, teacher_id, student_id, created_at, summary_json)`. The `students` row is what links a saved meeting to the parent's dashboard. Demo data (from `scripts/seed_teacher.py`): teacher "Ms. Tremblay", parent "Mme Martin", student "Léo Martin".
