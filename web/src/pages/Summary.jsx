@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { api, STUDENT } from '../api.js';
 import { useAuth } from '../auth.jsx';
+import FollowUp from '../components/FollowUp.jsx';
 import SummaryView from '../components/SummaryView.jsx';
 import { Bi } from '../lang.jsx';
 
@@ -13,6 +14,7 @@ export default function Summary() {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState('');
   const [note, setNote] = useState(null);
+  const [saved, setSaved] = useState(null); // the stored meeting, so the follow-up agent can run on it right here
   const [attempt, setAttempt] = useState(0); // bump to retry
 
   useEffect(() => {
@@ -25,7 +27,8 @@ export default function Summary() {
       if (user?.role !== 'teacher') return; // guests and parents don't save (only the teacher's meetings are stored)
       setNote({ text: <Bi fr="Enregistrement…" en="Saving…" /> });
       try {
-        await api.saveMeeting({ student: STUDENT, ...s });
+        const { id, created_at } = await api.saveMeeting({ student: STUDENT, ...s });
+        if (live) setSaved({ ...s, id, created_at, student: STUDENT });
         if (live) setNote({ text: <Bi fr="Enregistré dans le tableau de bord" en="Saved to your dashboard" /> });
       } catch (e) {
         if (live) setNote({ text: <><Bi fr="Non enregistré" en="Not saved" />: <Bi text={e.message} /></>, isError: true });
@@ -47,5 +50,7 @@ export default function Summary() {
   );
   const title = error ? <Bi fr="Résumé impossible" en="Summary failed" />
     : summary ? <Bi fr="Résumé" en="Summary" /> : <Bi fr="Préparation du résumé…" en="Preparing summary…" />;
-  return <SummaryView title={title} note={error ? { text: <Bi text={error} />, isError: true } : note} summary={summary} actions={actions} />;
+  return <SummaryView title={title} note={error ? { text: <Bi text={error} />, isError: true } : note} summary={summary} actions={actions}>
+    {saved && <FollowUp meeting={saved} onSent={followup => setSaved({ ...saved, followup })} />}
+  </SummaryView>;
 }
