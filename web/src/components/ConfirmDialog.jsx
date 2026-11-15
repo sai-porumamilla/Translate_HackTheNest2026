@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react';
+import { Bi, other, say, useLang } from '../lang.jsx';
 
 // "End meeting?" — native <dialog> gives focus trapping and Esc-to-cancel for free.
 // onClose receives "end" when confirmed; anything else (Cancel, Esc, backdrop click) means cancel.
-export default function ConfirmDialog({ open, onClose }) {
+export default function ConfirmDialog({ open, onClose, lang: forced }) {
   const ref = useRef(null);
+  const viewer = useLang();
+  const lang = forced || viewer;
 
   useEffect(() => {
     const dialog = ref.current;
@@ -23,15 +26,13 @@ export default function ConfirmDialog({ open, onClose }) {
   return (
     <dialog ref={ref} className="confirm" onClick={e => { if (e.target === e.currentTarget) e.currentTarget.close(); }}>
       <form method="dialog">
-        <h1 lang="fr">Terminer la rencontre ?</h1>
-        <p className="sub">End meeting?</p>
-        <p>
-          <span lang="fr">Vous verrez le résumé et les prochaines étapes. La conversation ne pourra pas reprendre.</span><br />
-          You'll see the summary and next steps. The conversation can't be resumed.
-        </p>
+        <h1 lang={lang}>{say(lang, 'Terminer la rencontre ?', 'End meeting?')}</h1>
+        <p className="sub" lang={other(lang)}>{say(lang, 'End meeting?', 'Terminer la rencontre ?')}</p>
+        <p lang={lang}>{say(lang, 'Vous verrez le résumé et les prochaines étapes. La conversation ne pourra pas reprendre.',
+          "You'll see the summary and next steps. The conversation can't be resumed.")}</p>
         <div className="row end">
-          <button className="btn" value="cancel" autoFocus>Annuler · Cancel</button>
-          <button className="btn primary" value="end">Terminer · End</button>
+          <button className="btn" value="cancel" autoFocus><Bi fr="Annuler" en="Cancel" lang={lang} /></button>
+          <button className="btn primary" value="end"><Bi fr="Terminer" en="End" lang={lang} /></button>
         </div>
       </form>
     </dialog>

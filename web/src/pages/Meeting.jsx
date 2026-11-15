@@ -4,6 +4,7 @@ import { api, LANG, MOCK } from '../api.js';
 import { analyserFor, audioContext, envelopeOf, fakeVoice, glowFollow, glowStop, loudness, player, unlockPlayer } from '../audio.js';
 import { Dots, MicIcon, SpeakerIcon, StopIcon } from '../components/icons.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import { Bi } from '../lang.jsx';
 
 const OTHER = { parent: 'teacher', teacher: 'parent' };
 const ROLE = {
@@ -281,7 +282,7 @@ export default function Meeting() {
   const endRow = (
     <div className="end-row">
       <button className="btn end" disabled={phase.name !== 'idle' || transcript.length === 0} onClick={() => setConfirming(true)}>
-        Terminer · End
+        <Bi fr="Terminer" en="End" />
       </button>
     </div>
   );

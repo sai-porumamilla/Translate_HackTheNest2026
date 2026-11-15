@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
+import { Bi } from '../lang.jsx';
 
 export default function Login() {
   const { user, setUser } = useAuth();
@@ -22,7 +23,7 @@ export default function Login() {
       setError(
         err.status === 401 ? 'Courriel ou mot de passe incorrect · Wrong email or password'
         // 404/405 = this backend has no /api/login route yet: point people at the guest path instead of a raw code
-        : err.status === 404 || err.status === 405 ? 'Connexion pas encore disponible · Sign-in isn’t available yet. Continue without an account below.'
+        : err.status === 404 || err.status === 405 ? 'Connexion pas encore disponible · Sign-in isn’t available yet'
         : err.message,
       );
       setBusy(false);
@@ -33,14 +34,14 @@ export default function Login() {
     <main className="login">
       <form className="card page" onSubmit={submit}>
         <h1>ParentBridge</h1>
-        <p className="sub"><span lang="fr">Espace enseignant</span> · Teacher sign-in</p>
-        <label htmlFor="email"><span lang="fr">Courriel</span> · Email</label>
+        <p className="sub"><Bi fr="Rencontres parents-enseignants" en="Parent–teacher meetings" /></p>
+        <label htmlFor="email"><Bi fr="Courriel" en="Email" /></label>
         <input id="email" name="email" type="email" autoComplete="username" required />
-        <label htmlFor="password"><span lang="fr">Mot de passe</span> · Password</label>
+        <label htmlFor="password"><Bi fr="Mot de passe" en="Password" /></label>
         <input id="password" name="password" type="password" autoComplete="current-password" required />
-        <button className="btn primary" type="submit" disabled={busy}><span lang="fr">Se connecter</span> · Sign in</button>
-        <p className="form-error" role="alert">{error}</p>
-        <Link className="guest" to="/meeting"><span lang="fr">Continuer sans compte</span> · Continue without an account</Link>
+        <button className="btn primary" type="submit" disabled={busy}><Bi fr="Se connecter" en="Sign in" /></button>
+        <p className="form-error" role="alert">{error && <Bi text={error} />}</p>
+        <Link className="guest" to="/meeting"><Bi fr="Continuer sans compte" en="Continue without an account" /></Link>
       </form>
     </main>
   );

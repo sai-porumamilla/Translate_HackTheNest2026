@@ -5,6 +5,7 @@ import { analyserFor, audioContext, envelopeOf, fakeVoice, glowFollow, glowStop,
 import { useAuth } from '../auth.jsx';
 import { Dots, MicIcon, SpeakerIcon, StopIcon } from '../components/icons.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import { say } from '../lang.jsx';
 
 // Video call (Figma "Video call"). Teacher on a laptop, parent on a phone, each in their own language.
 // - The call carries VIDEO ONLY: you never hear the other person's raw voice, only the ElevenLabs translation.
@@ -16,7 +17,6 @@ const OTHER = { parent: 'teacher', teacher: 'parent' };
 const LANG_NAME = { fr: 'Français', en: 'English' };
 const PURPLE = 'var(--glow-voice)', TEAL = 'var(--glow-interp)';
 const mimeType = window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/mp4';
-const say = (lang, fr, en) => (lang === 'fr' ? fr : en); // text in this device's language
 
 // Data channel messages are JSON. Big ones (the translated mp3) are cut into chunks: Safari caps a message at 64 KB.
 const CHUNK = 16000;
@@ -475,7 +475,7 @@ export default function Call() {
       </main>
 
       {orb && <div key={orb.key} className={`orb ${orb.stage}`} style={{ left: orb.x, top: orb.y, '--dx': `${orb.dx}px`, '--dy': `${orb.dy}px` }} />}
-      <ConfirmDialog open={confirming} onClose={result => { setConfirming(false); if (result === 'end') finish(true); }} />
+      <ConfirmDialog lang={lang} open={confirming} onClose={result => { setConfirming(false); if (result === 'end') finish(true); }} />
     </>
   );
 }

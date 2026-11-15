@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation } from 'react-router-dom';
 import { api, STUDENT } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import SummaryView from '../components/SummaryView.jsx';
+import { Bi } from '../lang.jsx';
 
 // Right after "End meeting": the transcript arrives in router state from /meeting.
 export default function Summary() {
@@ -22,12 +23,12 @@ export default function Summary() {
       if (!live) return;
       setSummary(s);
       if (user?.role !== 'teacher') return; // guests and parents don't save (only the teacher's meetings are stored)
-      setNote({ text: 'Enregistrement… · Saving…' });
+      setNote({ text: <Bi fr="Enregistrement…" en="Saving…" /> });
       try {
         await api.saveMeeting({ student: STUDENT, ...s });
-        if (live) setNote({ text: 'Enregistré dans le tableau de bord · Saved to your dashboard' });
+        if (live) setNote({ text: <Bi fr="Enregistré dans le tableau de bord" en="Saved to your dashboard" /> });
       } catch (e) {
-        if (live) setNote({ text: 'Non enregistré · Not saved: ' + e.message, isError: true });
+        if (live) setNote({ text: <><Bi fr="Non enregistré" en="Not saved" />: <Bi text={e.message} /></>, isError: true });
       }
     }, e => live && setError(e.message));
     return () => { live = false; };
@@ -37,13 +38,14 @@ export default function Summary() {
 
   const actions = (
     <>
-      {error && <button className="btn" onClick={() => setAttempt(a => a + 1)}><span lang="fr">Réessayer</span> · Retry</button>}
-      {user && <Link className="btn" to="/dashboard">← <span lang="fr">Tableau de bord</span> · Dashboard</Link>}
+      {error && <button className="btn" onClick={() => setAttempt(a => a + 1)}><Bi fr="Réessayer" en="Retry" /></button>}
+      {user && <Link className="btn" to="/dashboard">← <Bi fr="Tableau de bord" en="Dashboard" /></Link>}
       <Link className={`btn primary${summary ? '' : ' disabled'}`} to="/meeting" aria-disabled={!summary}>
-        <span lang="fr">Nouvelle rencontre</span> · New meeting
+        <Bi fr="Nouvelle rencontre" en="New meeting" />
       </Link>
     </>
   );
-  const title = error ? 'Résumé impossible · Summary failed' : summary ? 'Résumé · Summary' : 'Préparation du résumé… · Preparing summary…';
-  return <SummaryView title={title} note={error ? { text: error, isError: true } : note} summary={summary} actions={actions} />;
+  const title = error ? <Bi fr="Résumé impossible" en="Summary failed" />
+    : summary ? <Bi fr="Résumé" en="Summary" /> : <Bi fr="Préparation du résumé…" en="Preparing summary…" />;
+  return <SummaryView title={title} note={error ? { text: <Bi text={error} />, isError: true } : note} summary={summary} actions={actions} />;
 }

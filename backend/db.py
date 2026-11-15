@@ -147,3 +147,17 @@ def list_meetings(user: dict) -> list[dict]:
                 ORDER BY m.created_at DESC""",
             (user["id"],),
         ).fetchall()
+
+
+def set_followup(meeting_id: int, teacher_id: int, followup: dict) -> bool:
+    """Attach the message the teacher sent to the parent (from the follow-up agent) to a meeting they saved.
+
+    It lives inside summary_json, so GET /api/meetings returns it with no schema change. Returns False if not found.
+    """
+    with connect() as conn:
+        row = conn.execute(
+            """UPDATE meetings SET summary_json = summary_json || jsonb_build_object('followup', %s::jsonb)
+               WHERE id = %s AND teacher_id = %s RETURNING id""",
+            (Jsonb(followup), meeting_id, teacher_id),
+        ).fetchone()
+    return row is not None

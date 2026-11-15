@@ -28,6 +28,35 @@ const realApi = {
   callInfo: code => request(`/api/calls/${encodeURIComponent(code)}`),
   signal: (code, role, type, data) => request(`/api/calls/${encodeURIComponent(code)}/signal`, jsonPost({ role, type, data })),
   signals: (code, role, after) => request(`/api/calls/${encodeURIComponent(code)}/signal?role=${role}&after=${after}`),
+  // Follow-up agent: the server streams one JSON object per line (steps as they happen, then the result)
+  async agent(id, onStep) {
+    const res = await fetch(`/api/meetings/${id}/agent`, { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw Object.assign(new Error(data.error || `Server error (${res.status})`), { status: res.status });
+    }
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = '', result = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const lines = (buffer + value).split('\n');
+      buffer = lines.pop(); // an unfinished line waits for the next chunk
+      for (const line of lines.filter(Boolean)) {
+        const event = JSON.parse(line);
+        if (event.type === 'step') onStep(event);
+        else if (event.type === 'error') throw new Error(event.error);
+        else result = event;
+      }
+    }
+    if (!result) throw new Error('Suivi impossible, réessayez · Follow-up failed, please try again');
+    return result;
+  },
+  sendFollowup: (id, message) => request(`/api/meetings/${id}/followup`, jsonPost(message)),
+  followupAudio: id => fetch(`/api/meetings/${id}/followup/audio`).then(async res => {
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Server error (${res.status})`);
+    return res.arrayBuffer();
+  }),
   turn(blob, speaker, history) {
     const form = new FormData();
     form.append('audio', blob, blob.type.startsWith('audio/webm') ? 'turn.webm' : 'turn.mp4');
@@ -67,6 +96,26 @@ const MOCK_SUMMARY = {
   ],
 };
 
+const MOCK_AGENT = {
+  steps: [
+    { fr: '3 rencontres lues pour Léo', en: 'Read 3 meetings about Léo' },
+    { fr: '« IEP » vérifié dans le glossaire de l’école', en: 'Looked up “IEP” in the school glossary' },
+    { fr: '3 actions encore ouvertes, dont 1 en retard', en: '3 action items still open, 1 overdue' },
+    { fr: 'Message rédigé pour Mme Martin, en français', en: 'Drafted a message for Mme Martin, in French' },
+  ],
+  result: {
+    open_items: [
+      { owner: 'Teacher', task_en: 'Send math practice sheets home', task_fr: "Envoyer des fiches d'exercices à la maison", due: 'November 10', status: 'overdue' },
+      { owner: 'Parent', task_en: 'Sign the consent form', task_fr: 'Signer le formulaire de consentement', due: 'Friday', status: 'open' },
+      { owner: 'Teacher', task_en: 'Start math support twice a week', task_fr: 'Commencer le soutien en mathématiques', due: 'March 3', status: 'open' },
+    ],
+    message_en: 'Hello Mrs. Martin, thank you for meeting with me. A quick reminder: please sign the consent form by Friday so Léo can start math support on March 3. I owe you the practice sheets; they are on their way this week. An IEP is an individualized education plan: a support plan made for Léo.',
+    message_fr: "Bonjour Madame Martin, merci pour notre rencontre. Petit rappel : veuillez signer le formulaire de consentement d'ici vendredi, afin que Léo puisse commencer le soutien en mathématiques le 3 mars. Je vous dois les fiches d'exercices : elles partent cette semaine. Un IEP est un plan d'éducation individualisé : un plan d'aide fait pour Léo.",
+    next_questions_en: ['How is math support going so far?', 'Has the IEP evaluation been scheduled?'],
+    next_questions_fr: ['Comment se passe le soutien en mathématiques ?', "L'évaluation pour l'IEP a-t-elle été planifiée ?"],
+  },
+};
+
 const local = {
   get: (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
   set: (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: ignore */ } },
@@ -97,6 +146,16 @@ const mockApi = {
     return { id: saved.id, created_at: saved.created_at };
   },
   async summary() { await sleep(1500); return MOCK_SUMMARY; },
+  async agent(_id, onStep) {
+    for (const step of MOCK_AGENT.steps) { await sleep(700); onStep(step); }
+    return MOCK_AGENT.result;
+  },
+  async sendFollowup(id, message) {
+    const followup = { ...message, teacher: 'Ms. Tremblay', sent_at: new Date().toISOString() };
+    local.set('pb-mock-meetings', (await mockApi.meetings()).map(m => (m.id === id ? { ...m, followup } : m)));
+    return followup;
+  },
+  async followupAudio() { throw new Error('Pas de voix en mode démo · No voice in mock mode'); },
   async turn(_blob, speaker) {
     await sleep(1200); // roughly the real round trip, so the translating state is visible
     const lines = MOCK_LINES[speaker];

@@ -18,12 +18,13 @@ Team: two people. Sai (frontend: UI, recorder, captions, summary screen, deploy)
 - **Best Use of ElevenLabs** (partner): "judged on whether the voice is the product, not a feature bolted on". Our strongest fit.
 - **Best Use of SSOJet** (partner, optional): "how naturally sign-in fits your product". Not built; would need SSOJet setup + an OIDC callback.
 - **Best Domain Name from GoDaddy Registry** (MLH, optional): register a domain and select it on Devpost.
-- AI tools to list on Devpost: Claude (Anthropic API: translation, summaries), ElevenLabs (Scribe speech-to-text, Flash text-to-speech), Claude Code (development).
+- AI tools to list on Devpost: Claude (Anthropic API: translation, summaries, and the **follow-up agent** with tool use), ElevenLabs (Scribe speech-to-text, Flash text-to-speech, the parent's spoken follow-up), Claude Code (development).
+- Pitch line: speech recognition → translation with memory → voice → structured summary → **an agent that closes the loop with the parent, in their language.**
 
 ## Rules you must follow
 - **Never commit API keys.** Keys live in `.env` only. `.env` is in `.gitignore` from the very first commit. Commit `.env.example` with key names and no values.
 - **Synthetic data only.** Use the fictional student "Léo Martin, Grade 4, Maple Ridge Elementary." No real people, students or schools. The demo teacher account is fictional too.
-- **Never store passwords in plain text, and never store audio or full transcripts.** The database holds only meeting summaries and action items.
+- **Never store passwords in plain text, and never store audio or full transcripts.** The database holds only meeting summaries, action items, and the follow-up message the teacher chose to send.
 - All code is written during the event. Don't add large prebuilt templates.
 
 ## Scope: MVP only (features 1–6)
@@ -44,13 +45,14 @@ Timebox: 2–3 hours. If it isn't working end to end on the live link by then, s
 - The meeting itself (`/api/turn`, `/api/summary`) still works without logging in.
 - Split: Evan builds the database, endpoints and seed script; Sai builds the login page, dashboard and the save-after-summary call, using mock data until the endpoints are live.
 
-**Out of scope for now. Don't build these unless asked:** SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, voice follow-up, back-translation confidence, jargon coach, voice cloning.
+**Out of scope for now. Don't build these unless asked:** SSO, sign-up and multiple teachers, critical-fact confirmation, Exa rights lookup, back-translation confidence, jargon coach, voice cloning.
 
 ## Frontend = React app (`web/`, Sun): this is what's deployed
 The plain-JS `frontend/index.html` is retired (it's in git history). The source is `web/`; **`frontend/` is now build output**.
 - **Never edit `frontend/` by hand.** Change `web/src/`, then run `cd web && npx vite build`, which rewrites `frontend/` (`index.html` + `assets/`). Commit both. FastAPI and Render serve `frontend/` exactly as before: no backend or Render build change, no Node on Render.
 - Pages (HashRouter, so URLs look like `/#/dashboard` and FastAPI can keep serving plain static files): `/login`, `/dashboard`, `/meeting`, `/summary`, `/meetings/:id`. Same API contract as above; `?mock=1` fakes everything (mock password `demo`).
 - Roles: a teacher's dashboard has "New meeting" and their saved meetings; a parent's dashboard is a read-only list of their child's meetings. Only a teacher's meeting is saved; guests (no sign-in) and parents never call `POST /api/meetings`.
+- **Viewer-first language:** whoever is looking reads their own language first; the other language is a quieter echo after it (smaller, `--grey`). Teacher = English, parent = French, signed out = the browser's language. Use `<Bi fr="…" en="…" />` and `useLang()` from `web/src/lang.jsx`; `<Bi text={error} />` reorders the server's "Français · English" messages. Don't hard-code "FR · EN" labels in pages.
 - Design: "Paper & Ink" palette (warm paper, ink text, terracotta = a person talking, deep teal = the interpreter talking; all white text ≥ 4.5:1). The handoff light travels from the speaker's mic to the listener's and lands when the ElevenLabs audio starts. **Face-to-face layout** on portrait phones/tablets (English half rotated 180° for the teacher across the table, French half for the parent).
 - Dev: `cd web && npm install && npx vite` → http://localhost:5173. Vite forwards `/api` to uvicorn on :8000, so run the backend too for real turns.
 
@@ -68,6 +70,7 @@ backend/
   main.py          # FastAPI app, routes, static mount
   speech.py        # transcribe(), synthesize()
   translate.py     # translate(), summarize()
+  agent.py         # follow-up agent: Claude tool runner (get_past_meetings, explain_term) → FollowUp
   db.py            # Phase 2: Postgres tables, password hashing, queries
   glossary.json    # EN -> FR education terms
   requirements.txt
@@ -77,6 +80,7 @@ frontend/             # BUILD OUTPUT of web/ (served by FastAPI/Render); don't e
 web/                  # React source (Vite)
   src/api.js          # real + mock API (same contract)
   src/audio.js        # Web Audio + speaking glow loop
+  src/lang.jsx        # viewer-first language: useLang(), <Bi>, say(), dateFor()
   src/pages/          # Login, Dashboard, Meeting, Summary, PastMeeting
   src/styles.css
 scripts/
@@ -162,6 +166,18 @@ All of these except `POST /api/login` return 401 `{"error": "Not logged in"}` wi
 | `GET /api/meetings` | none | `[{"id", "created_at", "student", "summary_en", "summary_fr", "action_items"}]`, newest first. A teacher gets the meetings they saved; a parent gets the meetings about their child |
 
 Tables (see `backend/db.py`): `users (id, email unique, name, role 'teacher'|'parent', password_hash, salt)`, `students (id, name, teacher_id, parent_id)` and `meetings (id, teacher_id, student_id, created_at, summary_json)`. The `students` row is what links a saved meeting to the parent's dashboard. Demo data (from `scripts/seed_teacher.py`): teacher "Ms. Tremblay", parent "Mme Martin", student "Léo Martin".
+
+### Follow-up agent (Sun)
+On a saved meeting (`/#/meetings/:id`) the teacher taps "Prepare follow-up". `backend/agent.py` runs Claude (`SUMMARY_MODEL`) with the SDK's tool runner and two read-only tools scoped to that teacher and student: `get_past_meetings` and `explain_term` (the glossary). It returns open/overdue action items, a message to the parent (FR + EN) and next-meeting questions, never sends anything itself. The teacher reviews and taps Send; the parent sees "Nouveau message" on their dashboard and can hear it in French (ElevenLabs, generated on each tap, never stored).
+
+| Endpoint | Request | Response 200 |
+|---|---|---|
+| `POST /api/meetings/{id}/agent` | none (the teacher who saved it) | `application/x-ndjson` stream, one object per line: `{"type":"step","fr","en"}` as the agent works, then `{"type":"result","open_items":[{owner,task_en,task_fr,due,status:"open"\|"overdue"}],"message_en","message_fr","next_questions_en":[],"next_questions_fr":[]}`, or `{"type":"error","error"}` |
+| `POST /api/meetings/{id}/followup` | `{"message_en","message_fr"}` (teacher) | the stored follow-up `{message_en, message_fr, teacher, sent_at}`. It lives in `summary_json.followup`, so `GET /api/meetings` returns it as `followup` |
+| `GET /api/meetings/{id}/followup/audio` | none (that teacher or the student's parent) | `audio/mpeg`: `message_fr` read by `VOICE_ID_FR` |
+
+Parent on the agent or followup POST: 403 bilingual. Unknown meeting or no follow-up yet: 404 `"Rencontre introuvable · Meeting not found"`.
+Demo history: `scripts/seed_teacher.py` adds two synthetic past meetings for Léo (marked `"seed": "history"`, added once) so the agent has commitments to check.
 
 ### Video calls (Sun)
 Teacher (signed in) starts a call from the dashboard and sends the link `/#/call/{code}` to the parent (who can be a guest).

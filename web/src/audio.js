@@ -50,9 +50,10 @@ export function unlockPlayer() { // call from inside a tap
 }
 
 // Loudness of an mp3 in 20 ms steps (RMS), so the glow can follow the voice without routing sound through Web Audio.
-export async function envelopeOf(base64) {
-  const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-  const decoded = await audioContext().decodeAudioData(bytes.buffer);
+// mp3 = base64 text (a turn) or an ArrayBuffer (a fetched file; it gets copied, decoding empties the buffer it's given).
+export async function envelopeOf(mp3) {
+  const bytes = typeof mp3 === 'string' ? Uint8Array.from(atob(mp3), c => c.charCodeAt(0)).buffer : mp3.slice(0);
+  const decoded = await audioContext().decodeAudioData(bytes);
   const data = decoded.getChannelData(0), step = Math.round(decoded.sampleRate / 50), env = [];
   for (let i = 0; i < data.length; i += step) {
     let sum = 0;

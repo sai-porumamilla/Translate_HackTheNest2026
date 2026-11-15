@@ -7,13 +7,13 @@ import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
-from datetime import timezone
+from datetime import datetime, timezone
 
 import psycopg
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
@@ -21,6 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 load_dotenv()  # read keys from .env before anything else uses them
 
 from backend import db  # noqa: E402
+from backend.agent import run_followup  # noqa: E402
 from backend.speech import synthesize, transcribe  # noqa: E402
 from backend.translate import Summary, summarize, translate  # noqa: E402
 
@@ -262,6 +263,73 @@ def list_meetings(request: Request):
          **row["summary_json"]}  # adds summary_en, summary_fr, action_items
         for row in db.list_meetings(user)
     ]
+
+
+# ---------- Follow-up agent ----------
+# After a meeting, the teacher can ask an agent (backend/agent.py) to draft a follow-up for the parent.
+# The teacher reviews it and sends it; the parent reads it on their dashboard or hears it in French (ElevenLabs).
+
+MEETING_GONE = "Rencontre introuvable · Meeting not found"
+ONLY_TEACHERS = "Réservé à l'enseignant · Teachers only"
+
+
+def find_meeting(user: dict, meeting_id: int) -> dict | None:
+    """A meeting this user may see (list_meetings already applies the teacher/parent rule), or None."""
+    return next((m for m in db.list_meetings(user) if m["id"] == meeting_id), None)
+
+
+@app.post("/api/meetings/{meeting_id}/agent")
+def followup_agent(meeting_id: int, request: Request):
+    """Runs the agent and streams what it does, one JSON object per line: steps as they happen, then the result."""
+    user = logged_in_user(request)
+    if not user:
+        return error("Not logged in", 401)
+    if user["role"] != "teacher":
+        return error(ONLY_TEACHERS, 403)
+    meeting = find_meeting(user, meeting_id)
+    if not meeting:
+        return error(MEETING_GONE, 404)
+    lines = (json.dumps(event, ensure_ascii=False) + "\n" for event in run_followup(user, meeting))
+    # X-Accel-Buffering: ask proxies (Render) to pass each line through right away instead of buffering.
+    return StreamingResponse(lines, media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+class FollowupRequest(BaseModel):
+    message_en: str
+    message_fr: str
+
+
+@app.post("/api/meetings/{meeting_id}/followup")
+def send_followup(meeting_id: int, body: FollowupRequest, request: Request):
+    """The teacher sends the (reviewed) message: it shows up on the parent's dashboard."""
+    user = logged_in_user(request)
+    if not user:
+        return error("Not logged in", 401)
+    if user["role"] != "teacher":
+        return error(ONLY_TEACHERS, 403)
+    followup = {**body.model_dump(), "teacher": user["name"], "sent_at": iso(datetime.now(timezone.utc))}
+    if not db.set_followup(meeting_id, user["id"], followup):
+        return error(MEETING_GONE, 404)
+    return followup
+
+
+@app.get("/api/meetings/{meeting_id}/followup/audio")
+def followup_audio(meeting_id: int, request: Request):
+    """The sent message, read aloud in French by ElevenLabs. Made on each request and never stored."""
+    user = logged_in_user(request)
+    if not user:
+        return error("Not logged in", 401)
+    meeting = find_meeting(user, meeting_id)
+    followup = meeting and meeting["summary_json"].get("followup")
+    if not followup:
+        return error(MEETING_GONE, 404)
+    try:
+        mp3 = synthesize(followup["message_fr"], os.environ["VOICE_ID_FR"])
+    except Exception as e:
+        log.warning(f"Follow-up audio failed: {e!r}")
+        return error("Lecture impossible, réessayez · Couldn't play the message, please try again", 502)
+    return Response(mp3, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
 
 # ---------- Video calls ----------
