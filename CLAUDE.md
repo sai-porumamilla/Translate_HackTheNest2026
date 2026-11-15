@@ -159,13 +159,13 @@ All of these except `POST /api/login` return 401 `{"error": "Not logged in"}` wi
 
 | Endpoint | Request | Response 200 |
 |---|---|---|
-| `POST /api/login` | `{"email": "...", "password": "..."}` (email is case-insensitive) | `{"name": "Ms. Tremblay", "role": "teacher"}` (or `"role": "parent"`) and sets the session cookie. Wrong email or password: 401 `{"error": "Wrong email or password"}` |
+| `POST /api/login` | `{"email": "...", "password": "..."}` (email is case-insensitive) | `{"name": "Mr. Tremblay", "role": "teacher"}` (or `"role": "parent"`) and sets the session cookie. Wrong email or password: 401 `{"error": "Wrong email or password"}` |
 | `POST /api/logout` | none | `{}` and clears the cookie |
 | `GET /api/me` | none | `{"name": "...", "role": "teacher" \| "parent"}`. Use `role` to pick which dashboard to show |
 | `POST /api/meetings` | `{"student": "Léo Martin", "summary_en": "...", "summary_fr": "...", "action_items": [...]}` (same shape as the `/api/summary` response, plus `student`) | `{"id": 1, "created_at": "2026-11-14T21:30:00Z"}`. **Teachers only**: a parent gets 403 `{"error": "Seul l'enseignant peut enregistrer une rencontre · Only teachers can save meetings"}`. `student` must be one of the teacher's students (case-insensitive), else 400 |
 | `GET /api/meetings` | none | `[{"id", "created_at", "student", "summary_en", "summary_fr", "action_items"}]`, newest first. A teacher gets the meetings they saved; a parent gets the meetings about their child |
 
-Tables (see `backend/db.py`): `users (id, email unique, name, role 'teacher'|'parent', password_hash, salt)`, `students (id, name, teacher_id, parent_id)` and `meetings (id, teacher_id, student_id, created_at, summary_json)`. The `students` row is what links a saved meeting to the parent's dashboard. Demo data (from `scripts/seed_teacher.py`): teacher "Ms. Tremblay", parent "Mme Martin", student "Léo Martin".
+Tables (see `backend/db.py`): `users (id, email unique, name, role 'teacher'|'parent', password_hash, salt)`, `students (id, name, teacher_id, parent_id)` and `meetings (id, teacher_id, student_id, created_at, summary_json)`. The `students` row is what links a saved meeting to the parent's dashboard. Demo data (from `scripts/seed_teacher.py`): teacher "Mr. Tremblay", parent "M. Martin" (both men; French shows "M.", English "Mr."), student "Léo Martin".
 
 ### Follow-up agent (Sun)
 On a saved meeting (`/#/meetings/:id`) the teacher taps "Prepare follow-up". `backend/agent.py` runs Claude (`SUMMARY_MODEL`) with the SDK's tool runner and two read-only tools scoped to that teacher and student: `get_past_meetings` and `explain_term` (the glossary). It returns open/overdue action items, a message to the parent (FR + EN) and next-meeting questions, never sends anything itself. The teacher reviews and taps Send; the parent sees "Nouveau message" on their dashboard and can hear it in French (ElevenLabs, generated on each tap, never stored).

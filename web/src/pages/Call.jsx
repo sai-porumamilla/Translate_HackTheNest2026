@@ -5,7 +5,7 @@ import { analyserFor, audioContext, envelopeOf, fakeVoice, glowFollow, glowStop,
 import { useAuth } from '../auth.jsx';
 import { Dots, MicIcon, SpeakerIcon, StopIcon } from '../components/icons.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
-import { say } from '../lang.jsx';
+import { say, titled } from '../lang.jsx';
 
 // Video call (Figma "Video call"). Teacher on a laptop, parent on a phone, each in their own language.
 // - The call carries VIDEO ONLY: you never hear the other person's raw voice, only the ElevenLabs translation.
@@ -56,7 +56,7 @@ export default function Call() {
   stageRef.current = stage;
 
   useEffect(() => {
-    api.callInfo(code).then(i => { setInfo(i); if (role === 'parent') setPeerName(i.teacher_name); }, () => setStage('gone'));
+    api.callInfo(code).then(i => { setInfo(i); if (role === 'parent') setPeerName(titled(lang, i.teacher_name)); }, () => setStage('gone'));
   }, [code, role]);
 
   // Video elements are re-created between stages; give them their streams back each time.
@@ -203,7 +203,7 @@ export default function Call() {
       return;
     }
     const p = phaseRef.current;
-    if (msg.t === 'hi') setPeerName(msg.name);
+    if (msg.t === 'hi') setPeerName(titled(lang, msg.name));
     else if (msg.t === 'floor') { // they started talking
       if (p.name === 'recording' && role === 'teacher') return; // both tapped at once: the teacher keeps the floor
       if (p.name === 'recording') cancelRecording();             // ...and the parent yields
@@ -385,7 +385,7 @@ export default function Call() {
           </>
         ) : (
           <>
-            <h1 lang="fr">{info ? `${info.teacher_name} vous invite à un appel vidéo` : 'Appel vidéo'}</h1>
+            <h1 lang="fr">{info ? `${titled('fr', info.teacher_name)} vous invite à un appel vidéo` : 'Appel vidéo'}</h1>
             <p className="sub">invited you to a video call · Léo Martin</p>
             <p className="sub">Vous entendrez la traduction en français. · You’ll hear the translation in your language.</p>
           </>

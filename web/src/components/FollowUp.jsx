@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, MOCK } from '../api.js';
 import { audioContext, envelopeOf, glowFollow, glowStop, player, unlockPlayer } from '../audio.js';
 import { useAuth } from '../auth.jsx';
-import { Bi, other, say, useLang } from '../lang.jsx';
+import { Bi, other, say, titled, useLang } from '../lang.jsx';
 import { Dots, SpeakerIcon, StopIcon } from './icons.jsx';
 
 // Follow-up agent (Figma "Follow-up agent + viewer language").
@@ -152,7 +152,7 @@ function ParentMessage({ meeting }) {
           </button>
         )}
         <div>
-          <h2 lang={lang}>{say(lang, `Message de ${followup.teacher}`, `Message from ${followup.teacher}`)}</h2>
+          <h2 lang={lang}>{say(lang, `Message de ${titled(lang, followup.teacher)}`, `Message from ${titled(lang, followup.teacher)}`)}</h2>
           <p className="agent-by" lang={lang}>{playing === true ? say(lang, 'Lecture en français…', 'Playing in French…') : say(lang, 'Touchez pour écouter en français', 'Tap to listen in French')}</p>
         </div>
       </header>

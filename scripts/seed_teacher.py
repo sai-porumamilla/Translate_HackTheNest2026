@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend import db  # noqa: E402
 
 # Fictional people only (synthetic-data rule in CLAUDE.md).
-TEACHER_NAME = "Ms. Tremblay"
-PARENT_NAME = "Mme Martin"
+TEACHER_NAME = "Mr. Tremblay"  # both demo adults are men: "M." in French, "Mr." in English
+PARENT_NAME = "M. Martin"
 STUDENT_NAME = "Léo Martin"
 
 db.create_tables()
@@ -36,13 +36,13 @@ print(f"Student: {STUDENT_NAME} (id {student_id}), teacher {teacher_id}, parent 
 # Marked "seed": "history" and added only once, so rerunning the script doesn't duplicate them.
 HISTORY = [
     (21, {"summary_en": "Léo enjoys reading. The family and the teacher agreed on a weekly reading log.",
-          "summary_fr": "Léo aime lire. La famille et l'enseignante ont convenu d'un carnet de lecture hebdomadaire.",
+          "summary_fr": "Léo aime lire. La famille et l'enseignant ont convenu d'un carnet de lecture hebdomadaire.",
           "action_items": [{"owner": "Parent", "task_en": "Sign Léo's reading log every week",
                             "task_fr": "Signer le carnet de lecture de Léo chaque semaine", "due": ""}]}),
     (7, {"summary_en": "The teacher is concerned about Léo's math: he struggles with multiplication. "
                        "The teacher will send practice sheets; the parent will practise times tables at home.",
-         "summary_fr": "L'enseignante s'inquiète des mathématiques de Léo : il a du mal avec la multiplication. "
-                       "Elle enverra des fiches d'exercices; le parent pratiquera les tables à la maison.",
+         "summary_fr": "L'enseignant s'inquiète des mathématiques de Léo : il a du mal avec la multiplication. "
+                       "Il enverra des fiches d'exercices; le parent pratiquera les tables à la maison.",
          "action_items": [{"owner": "Teacher", "task_en": "Send math practice sheets home",
                            "task_fr": "Envoyer des fiches d'exercices de mathématiques à la maison", "due": "November 10"},
                           {"owner": "Parent", "task_en": "Practise times tables with Léo 10 minutes a day",

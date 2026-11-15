@@ -66,6 +66,7 @@ Translate the latest message from {src} to {tgt}.
   explanation the first time it appears:
 {glossary}
 - Use a warm, respectful register (vous in French).
+- The teacher and the parent are both men: use masculine forms in French (l'enseignant, désolé).
 Return only the translation."""
 
 
@@ -146,6 +147,7 @@ SUMMARY_SCHEMA = {
 
 SUMMARY_PROMPT = """You summarize a parent–teacher meeting that was interpreted between French and English.
 - Write a short summary in English (summary_en) and the same summary in French (summary_fr). French uses "vous".
+- The teacher and the parent are both men: use masculine forms in French (l'enseignant, il).
 - List action items. Only include action items explicitly stated in the transcript.
   Never invent dates, owners or services.
 - owner is "Teacher" or "Parent". task_en and task_fr describe the same task in each language.

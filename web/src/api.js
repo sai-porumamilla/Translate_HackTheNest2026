@@ -101,7 +101,7 @@ const MOCK_AGENT = {
     { fr: '3 rencontres lues pour Léo', en: 'Read 3 meetings about Léo' },
     { fr: '« IEP » vérifié dans le glossaire de l’école', en: 'Looked up “IEP” in the school glossary' },
     { fr: '3 actions encore ouvertes, dont 1 en retard', en: '3 action items still open, 1 overdue' },
-    { fr: 'Message rédigé pour Mme Martin, en français', en: 'Drafted a message for Mme Martin, in French' },
+    { fr: 'Message rédigé pour M. Martin, en français', en: 'Drafted a message for Mr. Martin, in French' },
   ],
   result: {
     open_items: [
@@ -109,8 +109,8 @@ const MOCK_AGENT = {
       { owner: 'Parent', task_en: 'Sign the consent form', task_fr: 'Signer le formulaire de consentement', due: 'Friday', status: 'open' },
       { owner: 'Teacher', task_en: 'Start math support twice a week', task_fr: 'Commencer le soutien en mathématiques', due: 'March 3', status: 'open' },
     ],
-    message_en: 'Hello Mrs. Martin, thank you for meeting with me. A quick reminder: please sign the consent form by Friday so Léo can start math support on March 3. I owe you the practice sheets; they are on their way this week. An IEP is an individualized education plan: a support plan made for Léo.',
-    message_fr: "Bonjour Madame Martin, merci pour notre rencontre. Petit rappel : veuillez signer le formulaire de consentement d'ici vendredi, afin que Léo puisse commencer le soutien en mathématiques le 3 mars. Je vous dois les fiches d'exercices : elles partent cette semaine. Un IEP est un plan d'éducation individualisé : un plan d'aide fait pour Léo.",
+    message_en: 'Hello Mr. Martin, thank you for meeting with me. A quick reminder: please sign the consent form by Friday so Léo can start math support on March 3. I owe you the practice sheets; they are on their way this week. An IEP is an individualized education plan: a support plan made for Léo.',
+    message_fr: "Bonjour Monsieur Martin, merci pour notre rencontre. Petit rappel : veuillez signer le formulaire de consentement d'ici vendredi, afin que Léo puisse commencer le soutien en mathématiques le 3 mars. Je vous dois les fiches d'exercices : elles partent cette semaine. Un IEP est un plan d'éducation individualisé : un plan d'aide fait pour Léo.",
     next_questions_en: ['How is math support going so far?', 'Has the IEP evaluation been scheduled?'],
     next_questions_fr: ['Comment se passe le soutien en mathématiques ?', "L'évaluation pour l'IEP a-t-elle été planifiée ?"],
   },
@@ -131,8 +131,8 @@ const mockApi = {
   async login(email, password) {
     await sleep(400);
     if (password !== 'demo') throw authError('Wrong email or password');
-    local.set('pb-mock-teacher', 'Ms. Tremblay');
-    return { name: 'Ms. Tremblay', role: 'teacher' };
+    local.set('pb-mock-teacher', 'Mr. Tremblay');
+    return { name: 'Mr. Tremblay', role: 'teacher' };
   },
   async logout() { local.set('pb-mock-teacher', null); return {}; },
   async meetings() { // seeded with one past meeting so the dashboard isn't empty on first look
@@ -151,7 +151,7 @@ const mockApi = {
     return MOCK_AGENT.result;
   },
   async sendFollowup(id, message) {
-    const followup = { ...message, teacher: 'Ms. Tremblay', sent_at: new Date().toISOString() };
+    const followup = { ...message, teacher: 'Mr. Tremblay', sent_at: new Date().toISOString() };
     local.set('pb-mock-meetings', (await mockApi.meetings()).map(m => (m.id === id ? { ...m, followup } : m)));
     return followup;
   },

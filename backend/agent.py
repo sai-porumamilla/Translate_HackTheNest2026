@@ -52,6 +52,9 @@ Work in this order:
   to the teacher's overdue items), and explain any acronym in plain words. message_en: the same message in English.
 - next_questions_en and next_questions_fr: 2 or 3 questions to ask at the next meeting, about these items.
 
+The teacher and the parent are both men. In French write "Monsieur"/"M." and masculine forms (désolé);
+in English write "Mr." (never "Mme", "Madame", "Ms." or "Mrs.").
+
 Use only facts from the tool results. Never invent dates, services or owners."""
 
 
@@ -87,7 +90,7 @@ def run_followup(user: dict, meeting: dict):
                       "en": f"Looked up “{term}” in the school glossary"})
         return f"{match} = {GLOSSARY[match]}" if match else "Not in the glossary: explain it in plain words."
 
-    system = PROMPT.format(teacher=user["name"], parent=parent["name"], student=student_name,
+    system = PROMPT.format(teacher=user["name"], parent=parent["name"].replace("M. ", "Mr. ", 1), student=student_name,
                            meeting_date=meeting["created_at"].date().isoformat(), today=date.today().isoformat())
     try:
         runner = client.beta.messages.tool_runner(
@@ -109,7 +112,7 @@ def run_followup(user: dict, meeting: dict):
         yield {"type": "step", "fr": f"{len(result.open_items)} actions encore ouvertes, dont {overdue} en retard",
                "en": f"{len(result.open_items)} action items still open, {overdue} overdue"}
         yield {"type": "step", "fr": f"Message rédigé pour {parent['name']}, en français",
-               "en": f"Drafted a message for {parent['name']}, in French"}
+               "en": f"Drafted a message for {parent['name'].replace('M. ', 'Mr. ', 1)}, in French"}
         yield {"type": "result", **result.model_dump()}
     except Exception as e:  # the browser shows this; the details go to the server log
         log.warning(f"Follow-up agent failed: {e!r}")

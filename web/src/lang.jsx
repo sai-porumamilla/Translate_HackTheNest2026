@@ -7,6 +7,8 @@ const browserLang = navigator.language?.toLowerCase().startsWith('fr') ? 'fr' : 
 
 export const other = lang => (lang === 'fr' ? 'en' : 'fr');
 export const say = (lang, fr, en) => (lang === 'fr' ? fr : en);
+// "Mr. Tremblay" reads "M. Tremblay" in French, and "M. Martin" reads "Mr. Martin" in English.
+export const titled = (lang, name = '') => (lang === 'fr' ? name.replace(/^Mr\.? /, 'M. ') : name.replace(/^M\. /, 'Mr. '));
 export const dateFor = lang => new Intl.DateTimeFormat(lang === 'fr' ? 'fr-CA' : 'en-CA', { dateStyle: 'medium', timeStyle: 'short' });
 
 export function useLang() {
