@@ -31,9 +31,9 @@ The MVP (1–6) is done and verified end to end.
 
 ## Phase 2 (agreed Sat night): teacher login + database + dashboard
 Timebox: 2–3 hours. If it isn't working end to end on the live link by then, ship the dashboard with browser storage (`localStorage`) instead, so the demo stays safe.
-7. **Teacher login:** one seeded demo teacher (email + password). No sign-up page, no password reset, no SSO.
+7. **Login (teacher and parent):** one seeded demo teacher and one seeded demo parent (email + password), plus the student Léo Martin linking them. No sign-up page, no password reset, no SSO.
 8. **Database:** Render free Postgres. Store only meeting summaries and action items, never audio or full transcripts.
-9. **Dashboard:** "Hello, {name}", a list of past meetings (newest first), open one to see its bilingual summary and action items, and a "New meeting" button that opens the meeting screen.
+9. **Dashboards (teacher and parent):** "Hello, {name}", a list of past meetings (newest first), open one to see its bilingual summary and action items. The teacher's dashboard has a "New meeting" button that opens the meeting screen; the parent's dashboard is view-only and shows meetings about their child.
 - The meeting itself (`/api/turn`, `/api/summary`) still works without logging in.
 - Split: Evan builds the database, endpoints and seed script; Sai builds the login page, dashboard and the save-after-summary call, using mock data until the endpoints are live.
 
@@ -53,13 +53,14 @@ backend/
   main.py          # FastAPI app, routes, static mount
   speech.py        # transcribe(), synthesize()
   translate.py     # translate(), summarize()
+  db.py            # Phase 2: Postgres tables, password hashing, queries
   glossary.json    # EN -> FR education terms
   requirements.txt
 frontend/
   index.html
 scripts/
   test_roundtrip.py   # CLI: audio file -> STT -> translate -> TTS -> out.mp3
-  seed_teacher.py     # Phase 2: creates the tables + the demo teacher from env vars
+  seed_teacher.py     # Phase 2: creates the tables + demo teacher, demo parent and student from env vars
 .env.example
 .gitignore
 README.md
@@ -78,8 +79,11 @@ DATABASE_URL=           # Phase 2: Render Postgres connection string
 SESSION_SECRET=         # Phase 2: long random string that signs the session cookie
 DEMO_TEACHER_EMAIL=     # Phase 2: used only by scripts/seed_teacher.py
 DEMO_TEACHER_PASSWORD=  # Phase 2: used only by scripts/seed_teacher.py; never commit it
+DEMO_PARENT_EMAIL=      # Phase 2: used only by scripts/seed_teacher.py
+DEMO_PARENT_PASSWORD=   # Phase 2: used only by scripts/seed_teacher.py; never commit it
 ```
 On Render, set these in the dashboard's environment variables, never in the repo.
+`DATABASE_URL`: use Render's **External** URL in your local `.env` (for the seed script and local testing) and the **Internal** URL on the Render web service. Both point at the same database.
 
 ## API contract (do not change without telling both teammates)
 
@@ -124,13 +128,13 @@ All of these except `POST /api/login` return 401 `{"error": "Not logged in"}` wi
 
 | Endpoint | Request | Response 200 |
 |---|---|---|
-| `POST /api/login` | `{"email": "...", "password": "..."}` | `{"name": "Ms. Tremblay"}` and sets the session cookie. Wrong email or password: 401 `{"error": "Wrong email or password"}` |
+| `POST /api/login` | `{"email": "...", "password": "..."}` (email is case-insensitive) | `{"name": "Ms. Tremblay", "role": "teacher"}` (or `"role": "parent"`) and sets the session cookie. Wrong email or password: 401 `{"error": "Wrong email or password"}` |
 | `POST /api/logout` | none | `{}` and clears the cookie |
-| `GET /api/me` | none | `{"name": "..."}` |
-| `POST /api/meetings` | `{"student": "Léo Martin", "summary_en": "...", "summary_fr": "...", "action_items": [...]}` (same shape as the `/api/summary` response, plus `student`) | `{"id": 1, "created_at": "2026-11-14T21:30:00Z"}` |
-| `GET /api/meetings` | none | `[{"id", "created_at", "student", "summary_en", "summary_fr", "action_items"}]`, newest first, only the logged-in teacher's meetings |
+| `GET /api/me` | none | `{"name": "...", "role": "teacher" \| "parent"}`. Use `role` to pick which dashboard to show |
+| `POST /api/meetings` | `{"student": "Léo Martin", "summary_en": "...", "summary_fr": "...", "action_items": [...]}` (same shape as the `/api/summary` response, plus `student`) | `{"id": 1, "created_at": "2026-11-14T21:30:00Z"}`. **Teachers only**: a parent gets 403 `{"error": "Only teachers can save meetings"}`. `student` must be one of the teacher's students (case-insensitive), else 400 |
+| `GET /api/meetings` | none | `[{"id", "created_at", "student", "summary_en", "summary_fr", "action_items"}]`, newest first. A teacher gets the meetings they saved; a parent gets the meetings about their child |
 
-Tables: `teachers (id, email unique, name, password_hash, salt)` and `meetings (id, teacher_id, created_at, student, summary_json)`.
+Tables (see `backend/db.py`): `users (id, email unique, name, role 'teacher'|'parent', password_hash, salt)`, `students (id, name, teacher_id, parent_id)` and `meetings (id, teacher_id, student_id, created_at, summary_json)`. The `students` row is what links a saved meeting to the parent's dashboard. Demo data (from `scripts/seed_teacher.py`): teacher "Ms. Tremblay", parent "Mme Martin", student "Léo Martin".
 
 ## Reference code (speech.py)
 Confirm the current model IDs in the ElevenLabs docs before relying on these.
@@ -206,11 +210,11 @@ Done: `/api/turn`, `/api/summary`, startup warm-up, per-stage timing logs, gloss
 - [ ] **Devpost draft by 11:45 PM:** paste the write-up, make the repo public, add both teammates, list tracks and AI tools used.
 
 **Phase 2 (2–3 h timebox):**
-- [ ] Render free Postgres; tables `teachers` and `meetings` as in the API contract.
-- [ ] `/api/login`, `/api/logout`, `/api/me`, `GET`/`POST /api/meetings`, exactly as in the API contract. Every route except login returns 401 without a session.
-- [ ] Passwords: `hashlib.scrypt` with a random salt per teacher. Session: Starlette `SessionMiddleware` signed with `SESSION_SECRET`.
-- [ ] `scripts/seed_teacher.py`: creates the tables and the demo teacher from `DEMO_TEACHER_EMAIL` / `DEMO_TEACHER_PASSWORD`.
-- [ ] Add the new variable names (no values) to `.env.example`; set the values in Render.
+- [x] Render free Postgres; tables `users`, `students` and `meetings` as in the API contract.
+- [x] `/api/login`, `/api/logout`, `/api/me`, `GET`/`POST /api/meetings`, exactly as in the API contract. Every route except login returns 401 without a session. (Tested locally against the Render database.)
+- [x] Passwords: `hashlib.scrypt` with a random salt per user. Session: Starlette `SessionMiddleware` signed with `SESSION_SECRET`.
+- [x] `scripts/seed_teacher.py`: creates the tables, the demo teacher and parent, and Léo Martin, from the `DEMO_*` env vars. Safe to rerun.
+- [x] Add the new variable names (no values) to `.env.example`. [ ] Set the values in Render (with the deploy).
 - [ ] The frontend is already built against this contract (`?mock=1` fakes it). When the endpoints work locally, tell Sai so the two can be tested together.
 
 ## Build order and checkpoints

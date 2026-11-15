@@ -4,3 +4,5 @@ python-multipart==0.0.33
 python-dotenv==1.2.4
 elevenlabs==2.78.0
 anthropic==2.8.0
+psycopg[binary]==3.3.9
+itsdangerous==2.2.0
